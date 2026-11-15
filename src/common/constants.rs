@@ -20,7 +20,8 @@ pub struct Env {
     pub https_url: String,
     pub wss_url: String,
     pub bot_address: Address,
-    pub private_key: String,
+    /// Optional by design: simulation mode never signs or submits transactions.
+    pub private_key: Option<String>,
     pub identity_key: String,
     pub telegram_token: Option<String>,
     pub telegram_chat_id: Option<String>,
@@ -51,7 +52,7 @@ pub fn get_env() -> Result<Env> {
         https_url: env::var("HTTPS_URL").context("HTTPS_URL")?,
         wss_url: env::var("WSS_URL").context("WSS_URL")?,
         bot_address: env::var("BOT_ADDRESS").context("BOT_ADDRESS")?.parse()?,
-        private_key: env::var("PRIVATE_KEY").context("PRIVATE_KEY")?,
+        private_key: env::var("PRIVATE_KEY").ok(),
         identity_key: env::var("IDENTITY_KEY").unwrap_or_default(),
         telegram_token: env::var("TELEGRAM_TOKEN").ok(),
         telegram_chat_id: env::var("TELEGRAM_CHAT_ID").ok(),
