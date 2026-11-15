@@ -1,0 +1,7 @@
+.git
+.env
+target
+cache
+contracts/lib
+contracts/out
+owner-leads
