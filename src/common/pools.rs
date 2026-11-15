@@ -10,6 +10,17 @@ use std::{collections::HashMap, path::Path};
 pub type PoolsMap = HashMap<Address, (Address, Address)>;
 
 pub async fn load_all_pools<P: Provider<Ethereum>>(provider: &P) -> Result<PoolsMap> {
+    // Free RPC plans commonly reject large historical eth_getLogs ranges.
+    // Hosted simulation deployments can disable this scan and use an
+    // allowlisted or prebuilt cache instead.
+    if std::env::var("POOL_SCAN_ENABLED")
+        .map(|v| v.eq_ignore_ascii_case("false"))
+        .unwrap_or(false)
+    {
+        tracing::warn!("historical pool scan disabled by POOL_SCAN_ENABLED=false");
+        return Ok(PoolsMap::new());
+    }
+
     let path = Path::new("cache/pools.csv");
     if path.exists() { return read_cache(path); }
 
