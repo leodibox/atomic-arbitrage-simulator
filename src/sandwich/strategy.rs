@@ -17,6 +17,13 @@ pub async fn run_sandwich_strategy<P: Provider<Ethereum> + Clone + 'static>(
     mut rx: broadcast::Receiver<Event>,
     head: Arc<Mutex<u64>>,
 ) -> Result<()> {
+    if pools.is_empty() {
+        warn!("no pools loaded; strategy paused (POOL_SCAN_ENABLED=false or empty cache)");
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+        }
+    }
+
     let harness = Harness {
         provider: provider.clone(),
         executor: env.bot_address,
