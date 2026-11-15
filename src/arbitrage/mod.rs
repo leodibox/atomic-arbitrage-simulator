@@ -3,6 +3,7 @@
 
 pub mod cycles;
 pub mod metrics;
+pub mod rpc;
 pub mod state;
 
 pub use cycles::{find_cycles, Cycle, Hop};
