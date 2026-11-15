@@ -43,8 +43,14 @@ where
             pair,
             token0,
             token1,
-            reserve0: U256::from(reserves.reserve0.to::<u64>()),
-            reserve1: U256::from(reserves.reserve1.to::<u64>()),
+            reserve0: {
+                let limbs = reserves.reserve0.as_limbs();
+                U256::from_limbs([limbs[0], limbs[1], 0, 0])
+            },
+            reserve1: {
+                let limbs = reserves.reserve1.as_limbs();
+                U256::from_limbs([limbs[0], limbs[1], 0, 0])
+            },
             fee_bps: 30,
             block,
         });
