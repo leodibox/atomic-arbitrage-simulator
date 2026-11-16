@@ -73,6 +73,8 @@ impl ReserveCache {
     pub fn apply_sync_log(&mut self, pair: Address, data: &[u8], block: u64) -> bool {
         if data.len() < 64 { return false; }
         let Some(pool) = self.pools.get_mut(&pair) else { return false; };
+        // Ignore unconfirmed/out-of-order events rather than regressing reserves.
+        if block == 0 || block < pool.block { return false; }
         pool.apply_sync(
             U256::from_be_slice(&data[..32]),
             U256::from_be_slice(&data[32..64]),
@@ -95,6 +97,28 @@ pub fn sync_topic() -> B256 {
 mod tests {
     use super::*;
     use alloy::primitives::address;
+
+    #[test]
+    fn rejects_stale_or_unconfirmed_sync_logs() {
+        let a = address!("0000000000000000000000000000000000000001");
+        let b = address!("0000000000000000000000000000000000000002");
+        let pair = address!("0000000000000000000000000000000000000003");
+        let mut cache = ReserveCache::default();
+        cache.insert(PoolState {
+            pair, token0: a, token1: b,
+            reserve0: U256::from(100u64), reserve1: U256::from(200u64),
+            fee_bps: 30, block: 20,
+        });
+        let mut data = [0u8; 64];
+        data[31] = 15;
+        data[63] = 25;
+        assert!(!cache.apply_sync_log(pair, &data, 19));
+        assert!(!cache.apply_sync_log(pair, &data, 0));
+        assert_eq!(cache.get(&pair).unwrap().reserve0, U256::from(100u64));
+        assert!(cache.apply_sync_log(pair, &data, 21));
+        assert_eq!(cache.get(&pair).unwrap().reserve0, U256::from(15u64));
+        assert_eq!(cache.last_block(), 21);
+    }
 
     #[test]
     fn quotes_with_fee_and_updates_reserves() {
