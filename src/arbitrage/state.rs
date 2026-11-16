@@ -61,11 +61,20 @@ pub struct V3PoolState {
 impl V3PoolState {
     /// Quote a swap using single-tick concentrated liquidity math.
     pub fn quote(&self, input: Address, amount: U256) -> Option<(Address, U256)> {
-        if amount.is_zero() || self.liquidity.is_zero() || self.sqrt_price_x96.is_zero() {
+        if amount.is_zero() || self.liquidity.is_zero() || self.sqrt_price_x96.is_zero()
+            || self.fee_bps >= 10_000 {
             return None;
         }
 
-        let zero_for_one = input == self.token0;
+        // A V3 pool can only trade the two tokens it actually contains.
+        // Treating any other input as token1 invents arbitrage paths.
+        let zero_for_one = if input == self.token0 {
+            true
+        } else if input == self.token1 {
+            false
+        } else {
+            return None;
+        };
         let output_token = if zero_for_one { self.token1 } else { self.token0 };
 
         // Fee: amount * (1 - fee) 
@@ -175,6 +184,7 @@ impl ReserveCache {
     pub fn apply_sync_log(&mut self, pair: Address, data: &[u8], block: u64) -> bool {
         if data.len() < 64 { return false; }
         if let Some(pool) = self.pools.get_mut(&pair) {
+            if block == 0 || block < pool.block { return false; }
             pool.apply_sync(
                 U256::from_be_slice(&data[..32]),
                 U256::from_be_slice(&data[32..64]),
@@ -199,6 +209,42 @@ pub fn sync_topic() -> B256 {
 mod tests {
     use super::*;
     use alloy::primitives::address;
+
+    #[test]
+    fn v3_rejects_tokens_not_in_pair() {
+        let a = address!("0000000000000000000000000000000000000001");
+        let b = address!("0000000000000000000000000000000000000002");
+        let c = address!("0000000000000000000000000000000000000003");
+        let pool = V3PoolState {
+            pair: address!("0000000000000000000000000000000000000010"),
+            token0: a, token1: b,
+            sqrt_price_x96: U256::from(1u128) << 96,
+            liquidity: U256::from(1_000_000u64),
+            tick: 0, fee_bps: 5, block: 100,
+        };
+        assert!(pool.quote(c, U256::from(100u64)).is_none());
+    }
+
+    #[test]
+    fn rejects_stale_sync_updates() {
+        let a = address!("0000000000000000000000000000000000000001");
+        let b = address!("0000000000000000000000000000000000000002");
+        let pair = address!("0000000000000000000000000000000000000010");
+        let mut cache = ReserveCache::default();
+        cache.insert(PoolState {
+            pair, token0: a, token1: b,
+            reserve0: U256::from(100u64), reserve1: U256::from(200u64),
+            fee_bps: 30, block: 20,
+        });
+        let mut data = [0u8; 64];
+        data[31] = 15;
+        data[63] = 25;
+        assert!(!cache.apply_sync_log(pair, &data, 19));
+        assert!(!cache.apply_sync_log(pair, &data, 0));
+        assert_eq!(cache.get(&pair).unwrap().reserve0, U256::from(100u64));
+        assert!(cache.apply_sync_log(pair, &data, 21));
+        assert_eq!(cache.get(&pair).unwrap().reserve0, U256::from(15u64));
+    }
 
     #[test]
     fn quotes_with_fee_and_updates_reserves() {
