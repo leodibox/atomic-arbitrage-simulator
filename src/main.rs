@@ -3,15 +3,17 @@ use alloy::rpc::types::Filter;
 use alloy::transports::ws::WsConnect;
 use sandooo::arbitrage::{
     find_cycles,
-    rpc::{load_allowlisted_reserves, load_token_decimals},
+    rpc::{load_allowlisted_reserves, load_token_decimals, verify_allowlisted_tokens},
     state::sync_topic,
+    topology::count_closed_routes,
 };
 use sandooo::common::{constants::get_env, pools::load_all_pools, streams::*};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use tokio::sync::{broadcast, Mutex, RwLock};
+use tokio::sync::{broadcast, Mutex, Notify, RwLock};
 use tokio::task::JoinSet;
 use tracing::{info, warn};
+use anyhow::Context;
 use futures::StreamExt;
 
 #[tokio::main]
@@ -68,9 +70,22 @@ where
         }
     }
 
-    let sim_amount_override = std::env::var("SIM_AMOUNT_RAW")
-        .ok()
-        .and_then(|v| v.parse::<u64>().ok());
+    // Auto-sized discovery probes are the default even when legacy SIM_AMOUNT_RAW is set.
+    let amount_mode = std::env::var("SIM_AMOUNT_MODE")
+        .unwrap_or_else(|_| "auto".to_string())
+        .to_ascii_lowercase();
+    let sim_amount_override = match amount_mode.as_str() {
+        "auto" => None,
+        "fixed" => {
+            let amount = std::env::var("SIM_AMOUNT_RAW")
+                .context("SIM_AMOUNT_RAW is required for SIM_AMOUNT_MODE=fixed")?
+                .parse::<u64>()
+                .context("SIM_AMOUNT_RAW must be a positive raw integer")?;
+            anyhow::ensure!(amount > 0, "SIM_AMOUNT_RAW must be positive");
+            Some(amount)
+        }
+        other => anyhow::bail!("SIM_AMOUNT_MODE must be auto or fixed, got {other}"),
+    };
     let sim_max_hops = std::env::var("SIM_MAX_HOPS")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
@@ -82,7 +97,8 @@ where
     let sim_interval = std::env::var("SIM_INTERVAL_SECS")
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
-        .unwrap_or(15);
+        .unwrap_or(15)
+        .max(1);
     let premium_bps = std::env::var("SIM_AAVE_PREMIUM_BPS")
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
@@ -102,6 +118,15 @@ where
 
     let block = provider.get_block_number().await?;
     let initial = load_allowlisted_reserves(&provider, &allowlist, block).await?;
+    // Prevent impossible/incorrect pool routes from silently passing discovery.
+    verify_allowlisted_tokens(&provider, &initial).await?;
+    let structural_routes = count_closed_routes(&initial, sim_max_hops);
+    if structural_routes == 0 {
+        warn!(pools = initial.len(), max_hops = sim_max_hops,
+            "configured allowlist contains NO closed arbitrage routes");
+    } else {
+        info!(structural_routes, "configured allowlist contains structural routes (profit not proven)");
+    }
     let pair_addresses: Vec<_> = initial.pairs().copied().collect();
     let unique_tokens: Vec<_> = initial
         .values()
@@ -111,11 +136,15 @@ where
         .collect();
     let decimals_map = load_token_decimals(&provider, unique_tokens).await;
     let cache = Arc::new(RwLock::new(initial));
+    let sync_notify = Arc::new(Notify::new());
 
-    // Event-driven reserve updates from Sync logs (best-effort).
+    // Event-driven reserve updates from V2 Sync logs (best-effort).
+    // V3 pools still use periodic reconciliation until a verified swap-state
+    // subscription is implemented.
     let sync_cache = cache.clone();
     let sync_provider = provider.clone();
     let sync_pairs = pair_addresses.clone();
+    let event_notify = sync_notify.clone();
     tokio::spawn(async move {
         let filter = Filter::new().address(sync_pairs).event_signature(sync_topic());
         match sync_provider.subscribe_logs(&filter).await {
@@ -126,7 +155,9 @@ where
                     let block = log.block_number.unwrap_or_default();
                     let data: &[u8] = log.data().data.as_ref();
                     let mut guard = sync_cache.write().await;
-                    guard.apply_sync_log(pair, data, block);
+                    if guard.apply_sync_log(pair, data, block) {
+                        event_notify.notify_one();
+                    }
                 }
                 warn!("sync log stream ended");
             }
@@ -134,23 +165,42 @@ where
         }
     });
 
+    // Timer is independent of Sync events so reconciliation still happens
+    // even if the pool is quiet or the log stream is interrupted.
+    let mut refresh_timer = tokio::time::interval(std::time::Duration::from_secs(sim_interval));
+    refresh_timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    refresh_timer.tick().await; // We already fetched the initial snapshot.
+    let mut refresh_due = false;
+    let mut observed_block = block;
+    info!(
+        amount_mode = %amount_mode,
+        interval_secs = sim_interval,
+        v2_event_driven = true,
+        v3_event_driven = false,
+        "arbitrage discovery scan ready"
+    );
+
     loop {
-        // Periodic full refresh as fallback / reconciliation.
-        let block = match provider.get_block_number().await {
-            Ok(b) => b,
-            Err(error) => {
-                warn!(%error, "failed to fetch block number");
-                tokio::time::sleep(std::time::Duration::from_secs(sim_interval)).await;
-                continue;
+        if refresh_due {
+            refresh_due = false;
+            match provider.get_block_number().await {
+                Ok(b) => {
+                    observed_block = observed_block.max(b);
+                    match load_allowlisted_reserves(&provider, &allowlist, b).await {
+                        Ok(fresh) => {
+                            let mut guard = cache.write().await;
+                            if fresh.last_block() >= guard.last_block() {
+                                *guard = fresh;
+                            }
+                        }
+                        Err(error) => warn!(%error, "allowlisted reserve refresh failed"),
+                    }
+                }
+                Err(error) => warn!(%error, "failed to fetch block number"),
             }
-        };
-        match load_allowlisted_reserves(&provider, &allowlist, block).await {
-            Ok(fresh) => {
-                let mut guard = cache.write().await;
-                *guard = fresh;
-            }
-            Err(error) => warn!(%error, "allowlisted reserve refresh failed"),
         }
+        let block = observed_block.max(cache.read().await.last_block());
+        observed_block = block;
 
         let (pools, fresh_count, stale_count, cycles, near_misses, last_block, amounts_tried) = {
             let guard = cache.read().await;
@@ -167,7 +217,11 @@ where
                 for token in [pool.token0, pool.token1] {
                     if seen.insert(token) {
                         let d = *decimals_map.get(&token).unwrap_or(&18u8);
-                        by_decimals.entry(d).or_default().push(token);
+                        if d <= 30 {
+                            by_decimals.entry(d).or_default().push(token);
+                        } else {
+                            warn!(decimals = d, token = %token, "unsupported token decimals, skipping probe");
+                        }
                     }
                 }
             }
@@ -178,7 +232,11 @@ where
                 for token in [pool.token0, pool.token1] {
                     if seen.insert(token) {
                         let d = *decimals_map.get(&token).unwrap_or(&18u8);
-                        by_decimals.entry(d).or_default().push(token);
+                        if d <= 30 {
+                            by_decimals.entry(d).or_default().push(token);
+                        } else {
+                            warn!(decimals = d, token = %token, "unsupported token decimals, skipping probe");
+                        }
                     }
                 }
             }
@@ -334,6 +392,28 @@ where
             }
         }
 
-        tokio::time::sleep(std::time::Duration::from_secs(sim_interval)).await;
+        tokio::select! {
+            biased;
+            _ = refresh_timer.tick() => refresh_due = true,
+            _ = sync_notify.notified() => {
+                // Coalesce bursts to avoid repeated CPU-heavy calculations.
+                tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            }
+        }
+    }
+}
+#[cfg(test)]
+mod scanner_tests {
+    use super::pow10;
+    use alloy::primitives::U256;
+
+    #[test]
+    fn six_decimal_amount_units() {
+        assert_eq!(pow10(6), U256::from(1_000_000u64));
+    }
+
+    #[test]
+    fn eighteen_decimal_amount_units() {
+        assert_eq!(pow10(18), U256::from(1_000_000_000_000_000_000u64));
     }
 }

@@ -164,6 +164,37 @@ where
     Ok(cache)
 }
 
+/// Verify the configured token ordering against on-chain metadata before scanning.
+/// Invalid POOL_ALLOWLIST entries can otherwise fabricate profitable routes.
+pub async fn verify_allowlisted_tokens<P>(provider: &P, cache: &ReserveCache) -> Result<()>
+where
+    P: Provider<Ethereum> + Clone,
+{
+    for pool in cache.values() {
+        anyhow::ensure!(pool.fee_bps < 10_000, "invalid V2 fee on pair {}", pool.pair);
+        let contract = V2Pair::new(pool.pair, provider.clone());
+        let actual0 = contract.token0().call().await
+            .with_context(|| format!("token0() failed for V2 pair {}", pool.pair))?;
+        let actual1 = contract.token1().call().await
+            .with_context(|| format!("token1() failed for V2 pair {}", pool.pair))?;
+        anyhow::ensure!(actual0 == pool.token0 && actual1 == pool.token1
+            && actual0 != actual1,
+            "POOL_ALLOWLIST token mismatch for V2 pair {}", pool.pair);
+    }
+    for pool in cache.v3_values() {
+        anyhow::ensure!(pool.fee_bps < 10_000, "invalid V3 fee on pair {}", pool.pair);
+        let contract = V3Pool::new(pool.pair, provider.clone());
+        let actual0 = contract.token0().call().await
+            .with_context(|| format!("token0() failed for V3 pool {}", pool.pair))?;
+        let actual1 = contract.token1().call().await
+            .with_context(|| format!("token1() failed for V3 pool {}", pool.pair))?;
+        anyhow::ensure!(actual0 == pool.token0 && actual1 == pool.token1
+            && actual0 != actual1,
+            "POOL_ALLOWLIST token mismatch for V3 pool {}", pool.pair);
+    }
+    Ok(())
+}
+
 /// Loads ERC20 decimals for a set of token addresses (best-effort, defaults to 18).
 pub async fn load_token_decimals<P>(
     provider: &P,
