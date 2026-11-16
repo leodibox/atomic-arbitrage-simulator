@@ -205,7 +205,12 @@ where
         let (pools, fresh_count, stale_count, cycles, near_misses, last_block, amounts_tried) = {
             let guard = cache.read().await;
             // Count fresh vs stale pools
-            let fresh_count = guard.values().filter(|p| block.saturating_sub(p.block) <= stale_blocks).count();
+            let fresh_count = guard.values()
+                .filter(|p| block.saturating_sub(p.block) <= stale_blocks)
+                .count()
+                + guard.v3_values()
+                    .filter(|p| block.saturating_sub(p.block) <= stale_blocks)
+                    .count();
             let stale_count = guard.len() - fresh_count;
 
             let mut by_decimals: HashMap<u8, Vec<alloy::primitives::Address>> = HashMap::new();
