@@ -98,8 +98,8 @@ impl V3PoolState {
             // them makes this return approximately `amount` instead of a converted value.
             let amount_in_scaled = amount_after_fee * q96 / self.liquidity;
             let new_sqrt = self.sqrt_price_x96 + amount_in_scaled;
-            let num = self.liquidity * q96 * (new_sqrt - self.sqrt_price_x96);
-            let den = new_sqrt * self.sqrt_price_x96;
+            let num: U256 = self.liquidity * q96 * (new_sqrt - self.sqrt_price_x96);
+            let den: U256 = new_sqrt * self.sqrt_price_x96;
             if den.is_zero() { return None; }
             let amount_out = num / den;
             (amount_out > U256::ZERO).then_some((output_token, amount_out))
