@@ -250,6 +250,8 @@ where
             gas_cost_raw,
             "arbitrage simulation"
         );
+        // Cycles are expressed in distinct token units; do not interpret raw
+        // gross-profit ordering across different start tokens as USD ranking.
         for cycle in cycles.iter().take(5) {
             let premium = cycle.amount_in * alloy::primitives::U256::from(premium_bps)
                 / alloy::primitives::U256::from(10_000u64);
@@ -282,6 +284,8 @@ where
 /// every decimal precision. Sizes are discovery probes, not execution limits.
 fn candidate_amounts(decimals: u8) -> Vec<alloy::primitives::U256> {
     use alloy::primitives::U256;
+    // Guard against misreported token metadata overflowing a 256-bit amount.
+    if decimals > 30 { return Vec::new(); }
     let unit = U256::from(10u64).pow(U256::from(decimals));
     let factors: &[u64] = match decimals {
         0..=5 => &[1, 10, 100, 1_000],
@@ -309,6 +313,11 @@ mod discovery_tests {
             U256::from(10_000_000_000u64),
             U256::from(50_000_000_000u64),
         ]);
+    }
+
+    #[test]
+    fn ignores_unreasonable_token_decimals() {
+        assert!(candidate_amounts(255).is_empty());
     }
 
     #[test]
