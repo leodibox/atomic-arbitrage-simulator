@@ -6,6 +6,7 @@ use alloy::{
     sol,
 };
 use anyhow::{Context, Result};
+use std::collections::{HashMap, HashSet};
 
 sol! {
     #[sol(rpc)]
@@ -13,6 +14,11 @@ sol! {
         function token0() external view returns (address);
         function token1() external view returns (address);
         function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast);
+    }
+
+    #[sol(rpc)]
+    interface IERC20Meta {
+        function decimals() external view returns (uint8);
     }
 }
 
@@ -56,4 +62,25 @@ where
         });
     }
     Ok(cache)
+}
+
+/// Loads ERC20 decimals for a set of token addresses (best-effort, defaults to 18).
+pub async fn load_token_decimals<P>(
+    provider: &P,
+    tokens: impl IntoIterator<Item = Address>,
+) -> HashMap<Address, u8>
+where
+    P: Provider<Ethereum> + Clone,
+{
+    let unique: HashSet<Address> = tokens.into_iter().collect();
+    let mut out = HashMap::new();
+    for token in unique {
+        let contract = IERC20Meta::new(token, provider.clone());
+        let decimals = match contract.decimals().call().await {
+            Ok(d) => d,
+            Err(_) => 18,
+        };
+        out.insert(token, decimals);
+    }
+    out
 }

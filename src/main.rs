@@ -1,8 +1,13 @@
 use alloy::providers::{Provider, ProviderBuilder};
 use alloy::rpc::types::Filter;
 use alloy::transports::ws::WsConnect;
-use sandooo::arbitrage::{find_cycles, rpc::load_allowlisted_reserves, state::sync_topic};
+use sandooo::arbitrage::{
+    find_cycles,
+    rpc::{load_allowlisted_reserves, load_token_decimals},
+    state::sync_topic,
+};
 use sandooo::common::{constants::get_env, pools::load_all_pools, streams::*};
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::{broadcast, Mutex, RwLock};
 use tokio::task::JoinSet;
@@ -55,10 +60,9 @@ where
         }
     }
 
-    let sim_amount = std::env::var("SIM_AMOUNT_RAW")
+    let sim_amount_override = std::env::var("SIM_AMOUNT_RAW")
         .ok()
-        .and_then(|v| v.parse::<u64>().ok())
-        .unwrap_or(10_000_000_000); // e.g. 10,000 USDC (6 decimals) by default
+        .and_then(|v| v.parse::<u64>().ok());
     let sim_max_hops = std::env::var("SIM_MAX_HOPS")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
@@ -83,6 +87,13 @@ where
     let block = provider.get_block_number().await?;
     let initial = load_allowlisted_reserves(&provider, &allowlist, block).await?;
     let pair_addresses: Vec<_> = initial.pairs().copied().collect();
+    let unique_tokens: Vec<_> = initial
+        .values()
+        .flat_map(|p| [p.token0, p.token1])
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+    let decimals_map = load_token_decimals(&provider, unique_tokens).await;
     let cache = Arc::new(RwLock::new(initial));
 
     // Event-driven reserve updates from Sync logs (best-effort).
@@ -125,36 +136,106 @@ where
             Err(error) => warn!(%error, "allowlisted reserve refresh failed"),
         }
 
-        let (pools, cycles, last_block) = {
+        let (pools, mut cycles, last_block, amounts_tried) = {
             let guard = cache.read().await;
-            let starts: Vec<_> = guard.values().flat_map(|p| [p.token0, p.token1]).collect();
-            let mut cycles = find_cycles(
-                &guard,
-                &starts,
-                alloy::primitives::U256::from(sim_amount),
-                sim_max_hops,
-                alloy::primitives::U256::ZERO, // filter net profit below
-            );
-            let premium = alloy::primitives::U256::from(sim_amount) * alloy::primitives::U256::from(premium_bps)
-                / alloy::primitives::U256::from(10_000u64);
-            let costs = premium + alloy::primitives::U256::from(gas_cost_raw);
+            let mut by_decimals: HashMap<u8, Vec<alloy::primitives::Address>> = HashMap::new();
+            let mut seen: HashSet<alloy::primitives::Address> = HashSet::new();
+            for pool in guard.values() {
+                for token in [pool.token0, pool.token1] {
+                    if seen.insert(token) {
+                        let d = *decimals_map.get(&token).unwrap_or(&18u8);
+                        by_decimals.entry(d).or_default().push(token);
+                    }
+                }
+            }
+
             let min_net = alloy::primitives::U256::from(sim_min_profit);
-            cycles.retain(|c| c.gross_profit > costs && c.gross_profit - costs >= min_net);
-            (guard.len(), cycles, guard.last_block())
+            let mut all_cycles = Vec::new();
+            let mut amounts_tried = 0usize;
+
+            let run_amounts: Vec<(alloy::primitives::U256, Vec<alloy::primitives::Address>)> =
+                if let Some(amount) = sim_amount_override {
+                    let starts: Vec<_> = seen.iter().copied().collect();
+                    vec![(alloy::primitives::U256::from(amount), starts)]
+                } else {
+                    let mut runs = Vec::new();
+                    for (decimals, starts) in &by_decimals {
+                        let unit = alloy::primitives::U256::from(10u64).pow(alloy::primitives::U256::from(*decimals));
+                        // Try a few notionals scaled to token decimals to improve discovery.
+                        let factors: &[u64] = if *decimals <= 8 {
+                            &[1_000, 10_000, 50_000]
+                        } else if *decimals <= 9 {
+                            &[100, 1_000, 10_000]
+                        } else {
+                            // 18-dec (e.g. WETH/DAI): 0.1, 1, 10, 50 units
+                            // 6-dec (e.g. USDC/USDT): 100, 1_000, 10_000, 50_000 units
+                            if *decimals == 6 {
+                                &[100, 1_000, 10_000, 50_000]
+                            } else {
+                                // represent 0.1 as factor 1 with unit/10 handled below
+                                &[1, 10, 50]
+                            }
+                        };
+                        for &f in factors {
+                            let amount = if *decimals >= 18 {
+                                // f in {1,10,50} => 0.1,1,5 units? better: 1,10,50 units and include 0.5 via /2
+                                if f == 1 {
+                                    unit / alloy::primitives::U256::from(10u64) // 0.1
+                                } else if f == 10 {
+                                    unit // 1
+                                } else {
+                                    alloy::primitives::U256::from(10u64) * unit // 10
+                                }
+                            } else if *decimals == 6 {
+                                alloy::primitives::U256::from(f) * unit
+                            } else {
+                                alloy::primitives::U256::from(f) * unit
+                            };
+                            if amount > alloy::primitives::U256::ZERO {
+                                runs.push((amount, starts.clone()));
+                            }
+                        }
+                        // add larger size for 18-dec
+                        if *decimals >= 18 {
+                            runs.push((alloy::primitives::U256::from(50u64) * unit, starts.clone()));
+                        }
+                    }
+                    runs
+                };
+
+            for (amount, starts) in run_amounts {
+                amounts_tried += 1;
+                let mut found = find_cycles(
+                    &guard,
+                    &starts,
+                    amount,
+                    sim_max_hops,
+                    alloy::primitives::U256::ZERO,
+                );
+                let premium = amount * alloy::primitives::U256::from(premium_bps)
+                    / alloy::primitives::U256::from(10_000u64);
+                let costs = premium + alloy::primitives::U256::from(gas_cost_raw);
+                found.retain(|c| c.gross_profit > costs && c.gross_profit - costs >= min_net);
+                all_cycles.extend(found);
+            }
+
+            // de-dup by path signature + amount range roughly: keep best net per (pairs,hops)
+            all_cycles.sort_by(|a, b| b.gross_profit.cmp(&a.gross_profit));
+            (guard.len(), all_cycles, guard.last_block(), amounts_tried)
         };
 
         info!(
             pools,
             cycles = cycles.len(),
             block = last_block,
-            amount_raw = sim_amount,
+            amounts_tried,
             max_hops = sim_max_hops,
             premium_bps,
             gas_cost_raw,
             "arbitrage simulation"
         );
         for cycle in cycles.iter().take(5) {
-            let premium = alloy::primitives::U256::from(sim_amount) * alloy::primitives::U256::from(premium_bps)
+            let premium = cycle.amount_in * alloy::primitives::U256::from(premium_bps)
                 / alloy::primitives::U256::from(10_000u64);
             let net = cycle
                 .gross_profit
