@@ -84,3 +84,25 @@ where
     }
     out
 }
+
+/// Validate the pool/token triples once at startup against the pool contract.
+/// A typo in POOL_ALLOWLIST otherwise creates misleading or impossible routes.
+/// Unlike reserve reconciliation, this metadata verification is not polled.
+pub async fn verify_allowlisted_tokens<P>(provider: &P, cache: &ReserveCache) -> Result<()>
+where
+    P: Provider<Ethereum> + Clone,
+{
+    for pool in cache.values() {
+        let contract = V2Pair::new(pool.pair, provider.clone());
+        let actual0 = contract.token0().call().await
+            .with_context(|| format!("token0() failed for pair {}", pool.pair))?;
+        let actual1 = contract.token1().call().await
+            .with_context(|| format!("token1() failed for pair {}", pool.pair))?;
+        anyhow::ensure!(actual0 == pool.token0 && actual1 == pool.token1,
+            "POOL_ALLOWLIST token mismatch for pair {}: configured ({}, {}), on-chain ({}, {})",
+            pool.pair, pool.token0, pool.token1, actual0, actual1);
+        anyhow::ensure!(actual0 != actual1,
+            "pair {} reports identical token0 and token1", pool.pair);
+    }
+    Ok(())
+}
