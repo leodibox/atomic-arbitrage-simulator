@@ -105,15 +105,14 @@ contract FlashLoanArb {
 
         if (curToken != asset) revert BadPath();
 
-        uint256 endBal = IERC20(asset).balanceOf(address(this));
-        uint256 owed = amount + premium;
-        if (endBal < startBal + owed + minProfit) revert Unprofitable();
-        if (endBal < owed) revert InsufficientRepayment();
-
-        // Approve the pool to pull repayment.
-        IERC20(asset).approve(address(pool), owed);
-
-        emit FlashLoanExecuted(asset, amount, premium, int256(endBal) - int256(startBal) - int256(owed));
+        {
+            uint256 endBal = IERC20(asset).balanceOf(address(this));
+            uint256 owed = amount + premium;
+            uint256 preExisting = startBal >= amount ? startBal - amount : 0;
+            if (endBal < preExisting + owed + minProfit) revert Unprofitable();
+            IERC20(asset).approve(address(pool), owed);
+            emit FlashLoanExecuted(asset, amount, premium, int256(endBal - preExisting - owed));
+        }
         return true;
     }
 
