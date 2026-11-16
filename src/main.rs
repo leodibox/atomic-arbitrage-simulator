@@ -301,19 +301,37 @@ where
                     sim_max_hops,
                     alloy::primitives::U256::ZERO,
                 );
-                let premium = amount * alloy::primitives::U256::from(premium_bps)
+                let premium_base = amount * alloy::primitives::U256::from(premium_bps)
                     / alloy::primitives::U256::from(10_000u64);
-                let costs = premium + alloy::primitives::U256::from(gas_cost_raw);
-                // Track near-misses
-                for c in &found {
-                    if c.gross_profit > alloy::primitives::U256::ZERO
-                        && !(c.gross_profit > costs && c.gross_profit - costs >= min_net)
-                    {
+                let mut kept = Vec::new();
+                for c in found {
+                    // gas is denominated in ETH; express it in the cycle's start token
+                    // via hop 1's reserve ratio so it is comparable to gross_profit
+                    let gas_in_start = c
+                        .hops
+                        .first()
+                        .and_then(|h| guard.get(&h.pair).map(|p| (h, p)))
+                        .map(|(h, p)| {
+                            let (r_in, r_out) = if h.token_in == p.token0 {
+                                (p.reserve0, p.reserve1)
+                            } else {
+                                (p.reserve1, p.reserve0)
+                            };
+                            if r_out.is_zero() {
+                                alloy::primitives::U256::ZERO
+                            } else {
+                                alloy::primitives::U256::from(gas_cost_raw) * r_in / r_out
+                            }
+                        })
+                        .unwrap_or(alloy::primitives::U256::ZERO);
+                    let costs = premium_base + gas_in_start;
+                    if c.gross_profit > costs && c.gross_profit - costs >= min_net {
+                        kept.push(c);
+                    } else if c.gross_profit > alloy::primitives::U256::ZERO {
                         near_miss_list.push((c.gross_profit, c.hops.len()));
                     }
                 }
-                found.retain(|c| c.gross_profit > costs && c.gross_profit - costs >= min_net);
-                all_cycles.extend(found);
+                all_cycles.extend(kept);
             }
 
             // Dedup: keep best gross_profit per (pairs set, hops)

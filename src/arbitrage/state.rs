@@ -82,20 +82,9 @@ impl V3PoolState {
         let fee_mult = fee_denom - U256::from(self.fee_bps * 100); // fee_bps in bps -> ppm
         let amount_after_fee = amount * fee_mult / fee_denom;
 
-        // Single-tick swap:
-        // For zero_for_one: price decreases
-        // sqrtPrice' = (L * sqrtPrice) / (L + amount * sqrtPrice)  (simplified)
-        // amountOut = L * (sqrtPrice - sqrtPrice') / 2^96
-        // For one_for_zero: price increases
-        // sqrtPrice' = sqrtPrice + amount * 2^96 / L
-        // amountOut = L * (sqrtPrice' - sqrtPrice) / 2^96  (simplified)
-
         let q96 = U256::from(1u128) << 96;
         if zero_for_one {
-            // token0 -> token1
-            // new_sqrt_price = (L * sqrtP) / (L + amountIn * sqrtP / Q96) ... simplified
-            // amountOut = L * (sqrtP - new_sqrtP) / Q96 * (1 - fee already applied)
-            // Simplified single-tick:
+            // token0 -> token1: Δy = L·(√P − √P′) / Q96
             let numerator = self.liquidity * self.sqrt_price_x96;
             let denom: U256 = self.liquidity + (amount_after_fee * self.sqrt_price_x96 / q96);
             if denom.is_zero() { return None; }
@@ -104,11 +93,15 @@ impl V3PoolState {
             let amount_out = self.liquidity * (self.sqrt_price_x96 - new_sqrt) / q96;
             (amount_out > U256::ZERO).then_some((output_token, amount_out))
         } else {
-            // token1 -> token0
+            // token1 -> token0: Δx = L·Q96·(√P′ − √P) / (√P′ · √P)
+            // Both the √P′ denominator and the Q96 scaling are required; omitting
+            // them makes this return approximately `amount` instead of a converted value.
             let amount_in_scaled = amount_after_fee * q96 / self.liquidity;
             let new_sqrt = self.sqrt_price_x96 + amount_in_scaled;
-            // Simplified: amountOut ≈ L * (1 - sqrtP/sqrtP') 
-            let amount_out = self.liquidity * (new_sqrt - self.sqrt_price_x96) / new_sqrt * self.sqrt_price_x96 / q96;
+            let num = self.liquidity * q96 * (new_sqrt - self.sqrt_price_x96);
+            let den = new_sqrt * self.sqrt_price_x96;
+            if den.is_zero() { return None; }
+            let amount_out = num / den;
             (amount_out > U256::ZERO).then_some((output_token, amount_out))
         }
     }
@@ -136,9 +129,8 @@ impl ReserveCache {
         self.pools.get(pair)
     }
 
-    pub fn get_mut(&self, _pair: &Address) -> Option<&mut PoolState> {
-        // Can't return mut from HashMap through &self; use get_v2_mut instead
-        None
+    pub fn get_mut(&mut self, pair: &Address) -> Option<&mut PoolState> {
+        self.pools.get_mut(pair)
     }
 
     pub fn get_v2_mut(&mut self, pair: &Address) -> Option<&mut PoolState> {
@@ -223,6 +215,28 @@ mod tests {
             tick: 0, fee_bps: 5, block: 100,
         };
         assert!(pool.quote(c, U256::from(100u64)).is_none());
+    }
+
+    /// Regression: the token1->token0 branch used to return roughly the input
+    /// amount, making every two-hop cycle look profitable by orders of magnitude.
+    #[test]
+    fn v3_one_for_zero_converts_not_passes_through() {
+        let a = address!("0000000000000000000000000000000000000001");
+        let b = address!("0000000000000000000000000000000000000002");
+        let pool = V3PoolState {
+            pair: address!("0000000000000000000000000000000000000010"),
+            token0: a, token1: b,
+            sqrt_price_x96: U256::from(18_257u64) << 96,
+            liquidity: U256::from(1_000_000_000_000_000u64),
+            tick: 0, fee_bps: 5, block: 100,
+        };
+        let (out_token, out) = pool.quote(b, U256::from(54_870_000_000_000_000u64)).unwrap();
+        assert_eq!(out_token, a);
+        assert!(out > U256::from(150_000_000u64) && out < U256::from(180_000_000u64),
+            "expected ~1.64e8, got {}", out);
+        // and the inverse direction must stay consistent
+        let (_, back) = pool.quote(a, out).unwrap();
+        assert!(back < U256::from(54_870_000_000_000_000u64));
     }
 
     #[test]
