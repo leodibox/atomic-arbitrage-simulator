@@ -3,7 +3,7 @@ use alloy::rpc::types::Filter;
 use alloy::transports::ws::WsConnect;
 use sandooo::arbitrage::{
     find_cycles,
-    rpc::{load_allowlisted_reserves, load_token_decimals},
+    rpc::{load_allowlisted_reserves, load_token_decimals, verify_allowlisted_tokens},
     state::sync_topic,
     topology::count_closed_routes,
 };
@@ -103,6 +103,7 @@ where
 
     let block = provider.get_block_number().await?;
     let initial = load_allowlisted_reserves(&provider, &allowlist, block).await?;
+    verify_allowlisted_tokens(&provider, &initial).await?;
     let structural_routes = count_closed_routes(&initial, sim_max_hops);
     if structural_routes == 0 {
         warn!(pools = initial.len(), max_hops = sim_max_hops,
