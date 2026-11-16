@@ -5,6 +5,7 @@ pub mod cycles;
 pub mod metrics;
 pub mod rpc;
 pub mod state;
+pub mod topology;
 
 pub use cycles::{find_cycles, Cycle, Hop};
 pub use metrics::Metrics;
