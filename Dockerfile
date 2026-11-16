@@ -5,7 +5,11 @@ COPY Cargo.toml Cargo.lock ./
 COPY src ./src
 COPY contracts ./contracts
 
-RUN cargo build --release
+# Build gate: Render must compile and pass the Rust unit tests before deploying
+# the existing worker replacement. Test failures leave the old deploy running.
+RUN cargo test --locked --all-targets
+
+RUN cargo build --release --locked
 
 FROM debian:bookworm-slim
 RUN apt-get update \
