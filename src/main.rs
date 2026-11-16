@@ -9,9 +9,10 @@ use sandooo::arbitrage::{
 use sandooo::common::{constants::get_env, pools::load_all_pools, streams::*};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use tokio::sync::{broadcast, Mutex, RwLock};
+use tokio::sync::{broadcast, Mutex, Notify, RwLock};
 use tokio::task::JoinSet;
 use tracing::{info, warn};
+use anyhow::Context;
 use futures::StreamExt;
 
 #[tokio::main]
@@ -60,9 +61,23 @@ where
         }
     }
 
-    let sim_amount_override = std::env::var("SIM_AMOUNT_RAW")
-        .ok()
-        .and_then(|v| v.parse::<u64>().ok());
+    // Auto-size per starting token by default. A fixed raw amount is meaningful
+    // only for one token's decimals and otherwise silently misses opportunities.
+    let amount_mode = std::env::var("SIM_AMOUNT_MODE")
+        .unwrap_or_else(|_| "auto".to_string())
+        .to_ascii_lowercase();
+    let sim_amount_override = match amount_mode.as_str() {
+        "auto" => None,
+        "fixed" => {
+            let amount = std::env::var("SIM_AMOUNT_RAW")
+                .context("SIM_AMOUNT_RAW is required when SIM_AMOUNT_MODE=fixed")?
+                .parse::<u64>()
+                .context("SIM_AMOUNT_RAW must be a positive integer")?;
+            anyhow::ensure!(amount > 0, "SIM_AMOUNT_RAW must be positive");
+            Some(amount)
+        }
+        other => anyhow::bail!("SIM_AMOUNT_MODE must be auto or fixed, not {other}"),
+    };
     let sim_max_hops = std::env::var("SIM_MAX_HOPS")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
@@ -74,7 +89,8 @@ where
     let sim_interval = std::env::var("SIM_INTERVAL_SECS")
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
-        .unwrap_or(15);
+        .unwrap_or(15)
+        .max(1);
     let premium_bps = std::env::var("SIM_AAVE_PREMIUM_BPS")
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
@@ -95,11 +111,13 @@ where
         .collect();
     let decimals_map = load_token_decimals(&provider, unique_tokens).await;
     let cache = Arc::new(RwLock::new(initial));
+    let sync_notify = Arc::new(Notify::new());
 
     // Event-driven reserve updates from Sync logs (best-effort).
     let sync_cache = cache.clone();
     let sync_provider = provider.clone();
     let sync_pairs = pair_addresses.clone();
+    let event_notify = sync_notify.clone();
     tokio::spawn(async move {
         let filter = Filter::new().address(sync_pairs).event_signature(sync_topic());
         match sync_provider.subscribe_logs(&filter).await {
@@ -110,7 +128,9 @@ where
                     let block = log.block_number.unwrap_or_default();
                     let data: &[u8] = log.data().data.as_ref();
                     let mut guard = sync_cache.write().await;
-                    guard.apply_sync_log(pair, data, block);
+                    if guard.apply_sync_log(pair, data, block) {
+                        event_notify.notify_one();
+                    }
                 }
                 warn!("sync log stream ended");
             }
@@ -118,25 +138,45 @@ where
         }
     });
 
+    // Periodic full refresh stays independent of incoming Sync events.
+    // Even under heavy event traffic, poll reconciliation still runs.
+    let mut refresh_timer = tokio::time::interval(std::time::Duration::from_secs(sim_interval));
+    refresh_timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    refresh_timer.tick().await; // Initial cache was already loaded.
+    let mut refresh_due = false;
+    info!(
+        pools = pair_addresses.len(),
+        amount_mode = %amount_mode,
+        interval_secs = sim_interval,
+        "arbitrage discovery ready (Sync-event wakeup + periodic reconciliation)"
+    );
+
     loop {
-        // Periodic full refresh as fallback / reconciliation.
-        let block = match provider.get_block_number().await {
-            Ok(b) => b,
-            Err(error) => {
-                warn!(%error, "failed to fetch block number");
-                tokio::time::sleep(std::time::Duration::from_secs(sim_interval)).await;
-                continue;
+        if refresh_due {
+            let block = match provider.get_block_number().await {
+                Ok(b) => b,
+                Err(error) => {
+                    warn!(%error, "failed to fetch block number");
+                    // Keep scanning existing Sync-updated reserves even if the RPC poll fails.
+                    0
+                }
+            };
+            if block != 0 {
+                match load_allowlisted_reserves(&provider, &allowlist, block).await {
+                    Ok(fresh) => {
+                        let mut guard = cache.write().await;
+                        // Don't overwrite newer event-sourced state with a stale poll.
+                        if fresh.last_block() >= guard.last_block() {
+                            *guard = fresh;
+                        }
+                    }
+                    Err(error) => warn!(%error, "allowlisted reserve refresh failed"),
+                }
             }
-        };
-        match load_allowlisted_reserves(&provider, &allowlist, block).await {
-            Ok(fresh) => {
-                let mut guard = cache.write().await;
-                *guard = fresh;
-            }
-            Err(error) => warn!(%error, "allowlisted reserve refresh failed"),
+            refresh_due = false;
         }
 
-        let (pools, mut cycles, last_block, amounts_tried) = {
+        let (pools, cycles, last_block, amounts_tried) = {
             let guard = cache.read().await;
             let mut by_decimals: HashMap<u8, Vec<alloy::primitives::Address>> = HashMap::new();
             let mut seen: HashSet<alloy::primitives::Address> = HashSet::new();
@@ -153,6 +193,8 @@ where
             let mut all_cycles = Vec::new();
             let mut amounts_tried = 0usize;
 
+            // Build amounts in each start token's *own* smallest units.
+            // SIM_AMOUNT_RAW is used only in explicit fixed mode.
             let run_amounts: Vec<(alloy::primitives::U256, Vec<alloy::primitives::Address>)> =
                 if let Some(amount) = sim_amount_override {
                     let starts: Vec<_> = seen.iter().copied().collect();
@@ -160,44 +202,9 @@ where
                 } else {
                     let mut runs = Vec::new();
                     for (decimals, starts) in &by_decimals {
-                        let unit = alloy::primitives::U256::from(10u64).pow(alloy::primitives::U256::from(*decimals));
-                        // Try a few notionals scaled to token decimals to improve discovery.
-                        let factors: &[u64] = if *decimals <= 8 {
-                            &[1_000, 10_000, 50_000]
-                        } else if *decimals <= 9 {
-                            &[100, 1_000, 10_000]
-                        } else {
-                            // 18-dec (e.g. WETH/DAI): 0.1, 1, 10, 50 units
-                            // 6-dec (e.g. USDC/USDT): 100, 1_000, 10_000, 50_000 units
-                            if *decimals == 6 {
-                                &[100, 1_000, 10_000, 50_000]
-                            } else {
-                                // represent 0.1 as factor 1 with unit/10 handled below
-                                &[1, 10, 50]
-                            }
-                        };
-                        for &f in factors {
-                            let amount = if *decimals >= 18 {
-                                // f in {1,10,50} => 0.1,1,5 units? better: 1,10,50 units and include 0.5 via /2
-                                if f == 1 {
-                                    unit / alloy::primitives::U256::from(10u64) // 0.1
-                                } else if f == 10 {
-                                    unit // 1
-                                } else {
-                                    alloy::primitives::U256::from(10u64) * unit // 10
-                                }
-                            } else if *decimals == 6 {
-                                alloy::primitives::U256::from(f) * unit
-                            } else {
-                                alloy::primitives::U256::from(f) * unit
-                            };
-                            if amount > alloy::primitives::U256::ZERO {
-                                runs.push((amount, starts.clone()));
-                            }
-                        }
-                        // add larger size for 18-dec
-                        if *decimals >= 18 {
-                            runs.push((alloy::primitives::U256::from(50u64) * unit, starts.clone()));
+                        for amount in candidate_amounts(*decimals) {
+                            // Each start token has the same denomination within this group.
+                            runs.push((amount, starts.clone()));
                         }
                     }
                     runs
@@ -251,6 +258,55 @@ where
             );
         }
 
-        tokio::time::sleep(std::time::Duration::from_secs(sim_interval)).await;
+        tokio::select! {
+            biased;
+            _ = refresh_timer.tick() => refresh_due = true,
+            _ = sync_notify.notified() => {
+                // Coalesce bursts of events so they don't overwhelm CPU/logging.
+                tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            }
+        }
+    }
+}
+
+/// Probe realistic orders of magnitude per token instead of one raw value for
+/// every decimal precision. Sizes are discovery probes, not execution limits.
+fn candidate_amounts(decimals: u8) -> Vec<alloy::primitives::U256> {
+    use alloy::primitives::U256;
+    let unit = U256::from(10u64).pow(U256::from(decimals));
+    let factors: &[u64] = match decimals {
+        0..=5 => &[1, 10, 100, 1_000],
+        6 => &[100, 1_000, 10_000, 50_000],
+        7..=9 => &[10, 100, 1_000, 10_000],
+        10..=17 => &[1, 10, 100, 1_000],
+        _ => &[1, 10, 50],
+    };
+    let mut sizes = if decimals >= 18 { vec![unit / U256::from(10u64)] } else { vec![] };
+    sizes.extend(factors.iter().map(|f| U256::from(*f) * unit));
+    sizes
+}
+
+#[cfg(test)]
+mod discovery_tests {
+    use super::candidate_amounts;
+    use alloy::primitives::U256;
+
+    #[test]
+    fn probes_multiple_sensible_usdc_sizes() {
+        let sizes = candidate_amounts(6);
+        assert_eq!(sizes, vec![
+            U256::from(100_000_000u64),
+            U256::from(1_000_000_000u64),
+            U256::from(10_000_000_000u64),
+            U256::from(50_000_000_000u64),
+        ]);
+    }
+
+    #[test]
+    fn probes_fractional_and_whole_weth() {
+        let sizes = candidate_amounts(18);
+        assert_eq!(sizes.len(), 4);
+        assert_eq!(sizes[0], U256::from(100_000_000_000_000_000u64)); // 0.1 WETH
+        assert_eq!(sizes[1], U256::from(1_000_000_000_000_000_000u64)); // 1 WETH
     }
 }
