@@ -53,6 +53,23 @@ where
         }
     }
 
+    let sim_amount = std::env::var("SIM_AMOUNT_RAW")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(10_000_000_000); // 10,000 USDC (6 decimals) by default
+    let sim_max_hops = std::env::var("SIM_MAX_HOPS")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(3);
+    let sim_min_profit = std::env::var("SIM_MIN_PROFIT_RAW")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(1);
+    let sim_interval = std::env::var("SIM_INTERVAL_SECS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(15);
+
     loop {
         let block = provider.get_block_number().await?;
         match load_allowlisted_reserves(&provider, &allowlist, block).await {
@@ -64,14 +81,23 @@ where
                 let cycles = find_cycles(
                     &cache,
                     &starts,
-                    alloy::primitives::U256::from(1_000_000u64),
-                    3,
-                    alloy::primitives::U256::from(1u64),
+                    alloy::primitives::U256::from(sim_amount),
+                    sim_max_hops,
+                    alloy::primitives::U256::from(sim_min_profit),
                 );
-                info!(pools = cache.len(), cycles = cycles.len(), block, "arbitrage simulation");
+                info!(
+                    pools = cache.len(),
+                    cycles = cycles.len(),
+                    block,
+                    amount_raw = sim_amount,
+                    max_hops = sim_max_hops,
+                    "arbitrage simulation"
+                );
                 for cycle in cycles.iter().take(5) {
                     info!(
                         gross_profit = %cycle.gross_profit,
+                        amount_in = %cycle.amount_in,
+                        amount_out = %cycle.amount_out,
                         hops = cycle.hops.len(),
                         freshest_block = cycle.freshest_block,
                         "simulated cycle"
@@ -80,6 +106,6 @@ where
             }
             Err(error) => warn!(%error, "allowlisted reserve refresh failed"),
         }
-        tokio::time::sleep(std::time::Duration::from_secs(15)).await;
+        tokio::time::sleep(std::time::Duration::from_secs(sim_interval)).await;
     }
 }

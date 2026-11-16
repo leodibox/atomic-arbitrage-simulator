@@ -80,7 +80,7 @@ fn walk(
                 start,
                 amount_in: initial_amount,
                 amount_out: output,
-                gross_profit: output - amount,
+                gross_profit: output - initial_amount,
                 hops: hops.clone(),
                 freshest_block: freshest_block.max(pool.block),
             });
