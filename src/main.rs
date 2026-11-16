@@ -5,6 +5,7 @@ use sandooo::arbitrage::{
     find_cycles,
     rpc::{load_allowlisted_reserves, load_token_decimals},
     state::sync_topic,
+    topology::count_closed_routes,
 };
 use sandooo::common::{constants::get_env, pools::load_all_pools, streams::*};
 use std::collections::{HashMap, HashSet};
@@ -102,6 +103,13 @@ where
 
     let block = provider.get_block_number().await?;
     let initial = load_allowlisted_reserves(&provider, &allowlist, block).await?;
+    let structural_routes = count_closed_routes(&initial, sim_max_hops);
+    if structural_routes == 0 {
+        warn!(pools = initial.len(), max_hops = sim_max_hops,
+            "no structurally closed arbitrage routes in the configured allowlist; widening trade sizes alone cannot find cycles");
+    } else {
+        info!(structural_routes, "configured pools contain closed routes (profit not verified)");
+    }
     let pair_addresses: Vec<_> = initial.pairs().copied().collect();
     let unique_tokens: Vec<_> = initial
         .values()
