@@ -27,16 +27,14 @@ In your local, git-ignored `.env`, or **Render > Service > Environment**, set th
 HTTPS_URL=https://eth-mainnet.g.alchemy.com/v2/YOUR_ALCHEMY_API_KEY
 WSS_URL=wss://eth-mainnet.g.alchemy.com/v2/YOUR_ALCHEMY_API_KEY
 CHAIN_ID=1
-POOL_SCAN_ENABLED=false
-POOL_ALLOWLIST=
-DEBUG=true
+# Keep your existing POOL_SCAN_ENABLED, POOL_ALLOWLIST and DEBUG settings unchanged
 ```
 
 Use the complete URLs from the dashboard, not the literal placeholder. Keep the remaining required settings from `.env.example`, such as `BOT_ADDRESS`, `PROFIT_RECIPIENT_ADDRESS`, `MIN_REVENUE_WEI`, `BRIBE_BPS`, `MAX_GAS_PRICE_GWEI`, and `WETH_FLOAT`. The code requires a nonzero valid `PROFIT_RECIPIENT_ADDRESS` and a parsable `BOT_ADDRESS`.
 
 For **simulation-only**, leave `PRIVATE_KEY` and `IDENTITY_KEY` unset. Do not fund a wallet or enable transaction signing as part of RPC setup.
 
-**Note:** `POOL_SCAN_ENABLED=false` and an empty `POOL_ALLOWLIST` are deliberate safeguards: the worker stays idle rather than scanning all pools. Once you have a *verified* allowlist, configure it explicitly and test in simulation mode. The project currently does not broadcast transactions in this path.
+**Existing worker:** Render already runs this simulator with a nonempty pool set. **Do not change** `POOL_SCAN_ENABLED`, `POOL_ALLOWLIST`, or `DEBUG` during Alchemy setup. Preserve its existing simulations and only switch the two RPC URLs if needed. For a *new, separate* idle instance, `POOL_SCAN_ENABLED=false` and an empty allowlist will keep it idle until you deliberately configure pools. The project currently does not broadcast transactions in this path.
 
 ## 4. Validate RPC without exposing keys
 
@@ -48,7 +46,7 @@ $body = '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}'
 (Invoke-RestMethod -Uri $rpc -Method Post -ContentType "application/json" -Body $body).result
 ```
 
-Expected result for Ethereum Mainnet is **`0x1`**. This checks the HTTPS endpoint only; verify WebSocket connectivity separately before enabling any subscribing worker. An actual authenticated RPC smoke test remains pending until the Alchemy account/app and endpoint are configured.
+Expected result for Ethereum Mainnet is **`0x1`**. This checks the HTTPS endpoint only; verify WebSocket connectivity separately before enabling any subscribing worker. The existing Render worker is already processing Ethereum blocks, but its RPC provider has not been independently identified as Alchemy. An Alchemy-specific authenticated RPC smoke test remains pending until the account/app endpoint can be verified.
 
 ## Security and scope
 
