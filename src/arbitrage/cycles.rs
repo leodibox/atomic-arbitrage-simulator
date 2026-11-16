@@ -1,4 +1,4 @@
-use super::state::{PoolState, ReserveCache};
+use super::state::{PoolState, ReserveCache, V3PoolState};
 use alloy::primitives::{Address, U256};
 use std::collections::HashSet;
 
@@ -21,6 +21,33 @@ pub struct Cycle {
     pub freshest_block: u64,
 }
 
+/// Unified pool trait for quoting
+enum PoolRef<'a> {
+    V2(&'a PoolState),
+    V3(&'a V3PoolState),
+}
+
+impl<'a> PoolRef<'a> {
+    fn pair(&self) -> Address {
+        match self {
+            PoolRef::V2(p) => p.pair,
+            PoolRef::V3(p) => p.pair,
+        }
+    }
+    fn quote(&self, input: Address, amount: U256) -> Option<(Address, U256)> {
+        match self {
+            PoolRef::V2(p) => p.quote(input, amount),
+            PoolRef::V3(p) => p.quote(input, amount),
+        }
+    }
+    fn block(&self) -> u64 {
+        match self {
+            PoolRef::V2(p) => p.block,
+            PoolRef::V3(p) => p.block,
+        }
+    }
+}
+
 /// Finds closed 2-4 hop cycles from the current reserve cache.
 /// It only quotes locally; it never signs or submits a transaction.
 pub fn find_cycles(
@@ -31,9 +58,16 @@ pub fn find_cycles(
     min_profit: U256,
 ) -> Vec<Cycle> {
     let mut results = Vec::new();
+    // Collect all pools (V2 + V3)
+    let pools: Vec<PoolRef> = cache
+        .values()
+        .map(PoolRef::V2)
+        .chain(cache.v3_values().map(PoolRef::V3))
+        .collect();
+
     for &start in starts {
         walk(
-            cache,
+            &pools,
             start,
             start,
             amount_in,
@@ -49,7 +83,7 @@ pub fn find_cycles(
 }
 
 fn walk(
-    cache: &ReserveCache,
+    pools: &[PoolRef],
     start: Address,
     current: Address,
     amount: U256,
@@ -62,12 +96,12 @@ fn walk(
 ) {
     if hops.len() >= max_hops { return; }
 
-    for pool in cache.values() {
-        if used_pairs.contains(&pool.pair) { continue; }
+    for pool in pools {
+        if used_pairs.contains(&pool.pair()) { continue; }
         let Some((next, output)) = pool.quote(current, amount) else { continue; };
-        used_pairs.insert(pool.pair);
+        used_pairs.insert(pool.pair());
         hops.push(Hop {
-            pair: pool.pair,
+            pair: pool.pair(),
             token_in: current,
             token_out: next,
             amount_in: amount,
@@ -82,11 +116,11 @@ fn walk(
                 amount_out: output,
                 gross_profit: output - initial_amount,
                 hops: hops.clone(),
-                freshest_block: freshest_block.max(pool.block),
+                freshest_block: freshest_block.max(pool.block()),
             });
         } else if next != start {
             walk(
-                cache,
+                pools,
                 start,
                 next,
                 output,
@@ -95,12 +129,12 @@ fn walk(
                 used_pairs,
                 hops,
                 results,
-                freshest_block.max(pool.block),
+                freshest_block.max(pool.block()),
             );
         }
 
         hops.pop();
-        used_pairs.remove(&pool.pair);
+        used_pairs.remove(&pool.pair());
     }
 }
 

@@ -48,6 +48,14 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+fn pow10(decimals: u8) -> alloy::primitives::U256 {
+    let mut result = alloy::primitives::U256::from(1u64);
+    for _ in 0..decimals {
+        result *= alloy::primitives::U256::from(10u64);
+    }
+    result
+}
+
 async fn run_allowlisted_simulation<P>(provider: P) -> anyhow::Result<()>
 where
     P: Provider<alloy::network::Ethereum> + Clone + Send + Sync + 'static,
@@ -78,11 +86,19 @@ where
     let premium_bps = std::env::var("SIM_AAVE_PREMIUM_BPS")
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
-        .unwrap_or(5); // Aave V3 flashLoanSimple typical premium
+        .unwrap_or(5);
     let gas_cost_raw = std::env::var("SIM_GAS_COST_RAW")
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
         .unwrap_or(0);
+    let near_miss_count = std::env::var("SIM_NEAR_MISS_LOG")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(3);
+    let stale_blocks = std::env::var("SIM_STALE_BLOCKS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(10);
 
     let block = provider.get_block_number().await?;
     let initial = load_allowlisted_reserves(&provider, &allowlist, block).await?;
@@ -136,11 +152,29 @@ where
             Err(error) => warn!(%error, "allowlisted reserve refresh failed"),
         }
 
-        let (pools, mut cycles, last_block, amounts_tried) = {
+        let (pools, fresh_count, stale_count, cycles, near_misses, last_block, amounts_tried) = {
             let guard = cache.read().await;
+            // Count fresh vs stale pools
+            let fresh_count = guard.values().filter(|p| block.saturating_sub(p.block) <= stale_blocks).count();
+            let stale_count = guard.len() - fresh_count;
+
             let mut by_decimals: HashMap<u8, Vec<alloy::primitives::Address>> = HashMap::new();
             let mut seen: HashSet<alloy::primitives::Address> = HashSet::new();
             for pool in guard.values() {
+                if block.saturating_sub(pool.block) > stale_blocks {
+                    continue;
+                }
+                for token in [pool.token0, pool.token1] {
+                    if seen.insert(token) {
+                        let d = *decimals_map.get(&token).unwrap_or(&18u8);
+                        by_decimals.entry(d).or_default().push(token);
+                    }
+                }
+            }
+            for pool in guard.v3_values() {
+                if block.saturating_sub(pool.block) > stale_blocks {
+                    continue;
+                }
                 for token in [pool.token0, pool.token1] {
                     if seen.insert(token) {
                         let d = *decimals_map.get(&token).unwrap_or(&18u8);
@@ -151,8 +185,10 @@ where
 
             let min_net = alloy::primitives::U256::from(sim_min_profit);
             let mut all_cycles = Vec::new();
+            let mut near_miss_list: Vec<(alloy::primitives::U256, usize)> = Vec::new();
             let mut amounts_tried = 0usize;
 
+            // Build amount list
             let run_amounts: Vec<(alloy::primitives::U256, Vec<alloy::primitives::Address>)> =
                 if let Some(amount) = sim_amount_override {
                     let starts: Vec<_> = seen.iter().copied().collect();
@@ -160,34 +196,19 @@ where
                 } else {
                     let mut runs = Vec::new();
                     for (decimals, starts) in &by_decimals {
-                        let unit = alloy::primitives::U256::from(10u64).pow(alloy::primitives::U256::from(*decimals));
-                        // Try a few notionals scaled to token decimals to improve discovery.
-                        let factors: &[u64] = if *decimals <= 8 {
-                            &[1_000, 10_000, 50_000]
-                        } else if *decimals <= 9 {
-                            &[100, 1_000, 10_000]
+                        let unit = pow10(*decimals);
+                        let factors: &[u64] = if *decimals <= 6 {
+                            &[100, 1_000, 10_000, 50_000]
                         } else {
-                            // 18-dec (e.g. WETH/DAI): 0.1, 1, 10, 50 units
-                            // 6-dec (e.g. USDC/USDT): 100, 1_000, 10_000, 50_000 units
-                            if *decimals == 6 {
-                                &[100, 1_000, 10_000, 50_000]
-                            } else {
-                                // represent 0.1 as factor 1 with unit/10 handled below
-                                &[1, 10, 50]
-                            }
+                            &[1, 5, 10, 50]
                         };
                         for &f in factors {
                             let amount = if *decimals >= 18 {
-                                // f in {1,10,50} => 0.1,1,5 units? better: 1,10,50 units and include 0.5 via /2
                                 if f == 1 {
-                                    unit / alloy::primitives::U256::from(10u64) // 0.1
-                                } else if f == 10 {
-                                    unit // 1
+                                    unit / alloy::primitives::U256::from(10u64)
                                 } else {
-                                    alloy::primitives::U256::from(10u64) * unit // 10
+                                    alloy::primitives::U256::from(f) * unit / alloy::primitives::U256::from(10u64)
                                 }
-                            } else if *decimals == 6 {
-                                alloy::primitives::U256::from(f) * unit
                             } else {
                                 alloy::primitives::U256::from(f) * unit
                             };
@@ -195,9 +216,19 @@ where
                                 runs.push((amount, starts.clone()));
                             }
                         }
-                        // add larger size for 18-dec
-                        if *decimals >= 18 {
-                            runs.push((alloy::primitives::U256::from(50u64) * unit, starts.clone()));
+                        // Reserve-proportional: 0.01%, 0.1%, 1% of smallest reserve
+                        for pool in guard.values() {
+                            for (token, reserve) in [(pool.token0, pool.reserve0), (pool.token1, pool.reserve1)] {
+                                if starts.contains(&token) && !reserve.is_zero() {
+                                    for pct_num in [1u64, 10, 100] {
+                                        let amt = reserve * alloy::primitives::U256::from(pct_num)
+                                            / alloy::primitives::U256::from(10_000u64);
+                                        if amt > alloy::primitives::U256::ZERO {
+                                            runs.push((amt, vec![token]));
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                     runs
@@ -215,18 +246,43 @@ where
                 let premium = amount * alloy::primitives::U256::from(premium_bps)
                     / alloy::primitives::U256::from(10_000u64);
                 let costs = premium + alloy::primitives::U256::from(gas_cost_raw);
+                // Track near-misses
+                for c in &found {
+                    if c.gross_profit > alloy::primitives::U256::ZERO
+                        && !(c.gross_profit > costs && c.gross_profit - costs >= min_net)
+                    {
+                        near_miss_list.push((c.gross_profit, c.hops.len()));
+                    }
+                }
                 found.retain(|c| c.gross_profit > costs && c.gross_profit - costs >= min_net);
                 all_cycles.extend(found);
             }
 
-            // de-dup by path signature + amount range roughly: keep best net per (pairs,hops)
-            all_cycles.sort_by(|a, b| b.gross_profit.cmp(&a.gross_profit));
-            (guard.len(), all_cycles, guard.last_block(), amounts_tried)
+            // Dedup: keep best gross_profit per (pairs set, hops)
+            let mut seen_keys: HashSet<String> = HashSet::new();
+            let mut deduped = Vec::new();
+            for c in &all_cycles {
+                let mut pairs: Vec<_> = c.hops.iter().map(|h| format!("{:?}", h.pair)).collect();
+                pairs.sort();
+                let key = format!("{}:{}", pairs.join(","), c.hops.len());
+                if seen_keys.insert(key) {
+                    deduped.push(c.clone());
+                }
+            }
+
+            // Sort near-misses, keep top N
+            near_miss_list.sort_by(|a, b| b.0.cmp(&a.0));
+            near_miss_list.truncate(near_miss_count);
+
+            (guard.len(), fresh_count, stale_count, deduped, near_miss_list, guard.last_block(), amounts_tried)
         };
 
         info!(
             pools,
+            fresh = fresh_count,
+            stale = stale_count,
             cycles = cycles.len(),
+            near_misses = near_misses.len(),
             block = last_block,
             amounts_tried,
             max_hops = sim_max_hops,
@@ -234,6 +290,7 @@ where
             gas_cost_raw,
             "arbitrage simulation"
         );
+
         for cycle in cycles.iter().take(5) {
             let premium = cycle.amount_in * alloy::primitives::U256::from(premium_bps)
                 / alloy::primitives::U256::from(10_000u64);
@@ -249,6 +306,32 @@ where
                 freshest_block = cycle.freshest_block,
                 "simulated cycle"
             );
+        }
+
+        // Log near-misses to help understand why cycles=0
+        if cycles.is_empty() && !near_misses.is_empty() {
+            for (gp, hops) in &near_misses {
+                info!(
+                    gross_profit = %gp,
+                    hops,
+                    "near-miss cycle (did not clear net-profit filter)"
+                );
+            }
+        }
+
+        // Debug: log per-pool reserves
+        if std::env::var("DEBUG").map(|v| v.eq_ignore_ascii_case("true")).unwrap_or(false) {
+            for pool in cache.read().await.values() {
+                let age = block.saturating_sub(pool.block);
+                info!(
+                    pair = ?pool.pair,
+                    fee_bps = pool.fee_bps,
+                    reserve0 = %pool.reserve0,
+                    reserve1 = %pool.reserve1,
+                    age_blocks = age,
+                    "pool reserve"
+                );
+            }
         }
 
         tokio::time::sleep(std::time::Duration::from_secs(sim_interval)).await;
