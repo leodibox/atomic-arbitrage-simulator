@@ -2,7 +2,7 @@ use alloy::providers::{Provider, ProviderBuilder};
 use alloy::rpc::types::Filter;
 use alloy::transports::ws::WsConnect;
 use sandooo::arbitrage::{
-    find_cycles,
+    find_cycles, Cycle,
     rpc::{load_allowlisted_reserves, load_token_decimals, verify_allowlisted_tokens},
     state::sync_topic,
     topology::count_closed_routes,
@@ -27,9 +27,10 @@ async fn main() -> anyhow::Result<()> {
     let ws = WsConnect::new(env.wss_url.clone());
     let provider = ProviderBuilder::new().connect_ws(ws).await?;
 
-    let scan_enabled = std::env::var("POOL_SCAN_ENABLED")
-        .map(|v| !v.eq_ignore_ascii_case("false"))
-        .unwrap_or(true);
+    // Fail closed: never select the legacy pending-transaction strategy by
+    // omission, typo, or an unknown value.
+    let scan_config = std::env::var("POOL_SCAN_ENABLED").ok();
+    let scan_enabled = parse_scan_enabled(scan_config.as_deref())?;
     if !scan_enabled {
         return run_allowlisted_simulation(provider).await;
     }
@@ -48,6 +49,41 @@ async fn main() -> anyhow::Result<()> {
     ));
     while let Some(r) = set.join_next().await { r??; }
     Ok(())
+}
+
+/// Missing configuration selects read-only discovery; only the literal
+/// `true` activates the separately configured legacy strategy.
+fn parse_scan_enabled(value: Option<&str>) -> anyhow::Result<bool> {
+    match value {
+        None => Ok(false),
+        Some(v) if v.eq_ignore_ascii_case("false") => Ok(false),
+        Some(v) if v.eq_ignore_ascii_case("true") => Ok(true),
+        _ => anyhow::bail!("POOL_SCAN_ENABLED must be true or false"),
+    }
+}
+
+/// Retain each distinct start-token + ordered route, including the reverse
+/// direction. For multiple probes of the SAME start token and route, preserve
+/// the largest gross candidate, not the first arbitrary iteration result.
+/// This is discovery deduplication only, NOT post-gas trade approval.
+fn best_discovery_per_ordered_route(cycles: Vec<Cycle>) -> Vec<Cycle> {
+    let mut winners: Vec<Cycle> = Vec::new();
+    let mut positions: HashMap<String, usize> = HashMap::new();
+    for candidate in cycles {
+        let mut key = format!("{:?}", candidate.start);
+        for hop in &candidate.hops {
+            key.push_str(&format!("|{:?}:{:?}:{:?}", hop.pair, hop.token_in, hop.token_out));
+        }
+        if let Some(&index) = positions.get(&key) {
+            if candidate.gross_profit > winners[index].gross_profit {
+                winners[index] = candidate;
+            }
+        } else {
+            positions.insert(key, winners.len());
+            winners.push(candidate);
+        }
+    }
+    winners
 }
 
 fn pow10(decimals: u8) -> alloy::primitives::U256 {
@@ -328,17 +364,9 @@ where
                 all_cycles.extend(kept);
             }
 
-            // Dedup: keep best gross_profit per (pairs set, hops)
-            let mut seen_keys: HashSet<String> = HashSet::new();
-            let mut deduped = Vec::new();
-            for c in &all_cycles {
-                let mut pairs: Vec<_> = c.hops.iter().map(|h| format!("{:?}", h.pair)).collect();
-                pairs.sort();
-                let key = format!("{}:{}", pairs.join(","), c.hops.len());
-                if seen_keys.insert(key) {
-                    deduped.push(c.clone());
-                }
-            }
+            // Preserve both directions and start assets, selecting the best
+            // probe amount only within the same ordered route.
+            let deduped = best_discovery_per_ordered_route(all_cycles);
 
             // Sort near-misses, keep top N
             near_miss_list.sort_by(|a, b| b.0.cmp(&a.0));
@@ -425,8 +453,50 @@ where
 }
 #[cfg(test)]
 mod scanner_tests {
-    use super::pow10;
-    use alloy::primitives::U256;
+    use super::{best_discovery_per_ordered_route, parse_scan_enabled, pow10};
+    use alloy::primitives::{address, U256};
+    use sandooo::arbitrage::{Cycle, Hop};
+
+    #[test]
+    fn missing_or_invalid_scan_mode_never_activates_legacy_strategy() {
+        assert!(!parse_scan_enabled(None).unwrap());
+        assert!(!parse_scan_enabled(Some("false")).unwrap());
+        assert!(parse_scan_enabled(Some("TRUE")).unwrap());
+        assert!(parse_scan_enabled(Some("yes")).is_err());
+        assert!(parse_scan_enabled(Some("")).is_err());
+    }
+
+    #[test]
+    fn reverse_paths_preserved_and_best_probe_wins_per_ordered_route() {
+        let a = address!("0000000000000000000000000000000000000001");
+        let b = address!("0000000000000000000000000000000000000002");
+        let first = address!("0000000000000000000000000000000000000010");
+        let second = address!("0000000000000000000000000000000000000020");
+        let make_cycle = |pairs: [alloy::primitives::Address; 2], amount: u64, gross: u64| {
+            Cycle {
+                start: a,
+                amount_in: U256::from(amount),
+                amount_out: U256::from(amount + gross),
+                gross_profit: U256::from(gross),
+                hops: vec![
+                    Hop {pair:pairs[0], token_in:a, token_out:b,
+                         amount_in:U256::from(amount),amount_out:U256::from(amount)},
+                    Hop {pair:pairs[1], token_in:b, token_out:a,
+                         amount_in:U256::from(amount),amount_out:U256::from(amount+gross)},
+                ],
+                freshest_block: 100,
+            }
+        };
+        let selected = best_discovery_per_ordered_route(vec![
+            make_cycle([first, second], 100, 5),
+            make_cycle([second, first], 100, 3),
+            make_cycle([first, second], 200, 25),
+        ]);
+        assert_eq!(selected.len(), 2, "reverse route must not disappear");
+        assert_eq!(selected[0].gross_profit, U256::from(25));
+        assert_eq!(selected[0].amount_in, U256::from(200));
+        assert_eq!(selected[1].hops[0].pair, second);
+    }
 
     #[test]
     fn six_decimal_amount_units() {
