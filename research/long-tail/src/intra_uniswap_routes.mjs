@@ -45,7 +45,8 @@ export function enumerateIntraUniswap(inventory,{anchor=WETH,maxRoutes=5000}={})
         const original=byAddress.get(k);
         if(JSON.stringify(original)!==JSON.stringify(p)) fail('DUPLICATE_POOL_CONFLICT');
       }else byAddress.set(k,p);
-    }catch(e){errors.push({address:source?.address||null,reason:e.message});}
+    }catch(e){if(e.message==='DUPLICATE_POOL_CONFLICT')throw e;
+      errors.push({address:source?.address||null,reason:e.message});}
   }
   const pools=[...byAddress.values()];
   const adjacency=new Map();
