@@ -5,6 +5,7 @@ export const TOPICS=Object.freeze({
   v3:'0xc42079f94a6350d7e6235f2917495a9d78ff82dd33fbb8f9195e7590c9de8d3'
 });
 const WETH='0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2';
+const FACTORY={v2:'0x5c69bee701ef814a2b6a3edd4b1652cb9cca6f',v3:'0x1f98431c8ad98523631ae4a59f267346ea31f984'};
 const fail=m=>{throw Error(m)};
 const address=x=>typeof x==='string'&&/^0x[0-9a-f]{40}$/i.test(x);
 const hash=x=>typeof x==='string'&&/^0x[0-9a-f]{64}$/i.test(x);
@@ -29,7 +30,9 @@ export function buildPoolIndex(inventory){
  const pools=new Map();
  for(const market of inventory.markets)for(const p of market.pools||[]) {
   if(!address(p.address)||!address(p.factory)||!address(p.token0)||!address(p.token1)||
-      p.status!=='VERIFIED_IDENTITY'||!['v2','v3'].includes(p.kind)) continue;
+      p.status!=='VERIFIED_IDENTITY'||!['v2','v3'].includes(p.kind)||
+      !eq(p.factory,FACTORY[p.kind])||p.venue!==(p.kind==='v2'?'UniswapV2':'UniswapV3')||
+      !(p.kind==='v2'&&p.fee===3000 || p.kind==='v3'&&[100,500,3000,10000].includes(p.fee))) continue;
   if(!eq(p.token0,WETH)&&!eq(p.token1,WETH))continue; // WETH-notional pilot only
   const k=p.address.toLowerCase(),simple={address:p.address,kind:p.kind,token0:p.token0,token1:p.token1,
     feePpm:p.fee,venue:p.venue,factory:p.factory};
@@ -68,14 +71,15 @@ export function parseSwap(log,index){
    triggeringPoolToken0:pool.token0,triggeringPoolToken1:pool.token1,
    candidateState:'SWAP_EVENT_ONLY_NOT_REPLAYED',tradeExecutionAllowed:false};
 }
-export function rankLargestSwaps(logs,index,{maxCandidates=12,minWethWei=1n}={}){
- if(!Number.isInteger(maxCandidates)||maxCandidates<1||maxCandidates>50||big(minWethWei)<0n)
+export function rankLargestSwaps(logs,index,{maxCandidates=12,minWethWei=1n,maxBlockNumber=index.blockNumber}={}){
+ if(!Number.isInteger(maxCandidates)||maxCandidates<1||maxCandidates>50||big(minWethWei)<0n||
+    !Number.isSafeInteger(maxBlockNumber)||maxBlockNumber<index.blockNumber)
    fail('INVALID_SELECTION_LIMITS');
  const events=[],rejections=[],seen=new Set();
  for(const log of logs){
   try{
    const v=parseSwap(log,index);
-   if(v.blockNumber>index.blockNumber)fail('SWAP_AFTER_CHECKPOINT');
+   if(v.blockNumber>maxBlockNumber)fail('SWAP_AFTER_CHECKPOINT');
    const k=v.blockHash.toLowerCase()+':'+v.txHash.toLowerCase()+':'+v.logIndex;
    if(seen.has(k))fail('DUPLICATE_SWAP_LOG');
    seen.add(k);
@@ -129,6 +133,16 @@ export function verifySelectedReceipt(candidate,receipt,block){
    intNumber(l.logIndex)===candidate.logIndex&&
    eq(l.topics?.[0]||'',TOPICS[candidate.kind]));
  if(!match)fail('TRIGGER_SWAP_NOT_IN_RECEIPT');
+ const confirmed=parseSwap(match,{pools:new Map([[candidate.poolAddress.toLowerCase(),{
+   address:candidate.poolAddress,kind:candidate.kind,
+   token0:candidate.triggeringPoolToken0,token1:candidate.triggeringPoolToken1,feePpm:candidate.feePpm
+ }]])});
+ if(confirmed.wethVolumeWei!==candidate.wethVolumeWei||
+    confirmed.direction!==candidate.direction ||
+    !eq(confirmed.blockHash,candidate.blockHash)||
+    !eq(confirmed.txHash,candidate.txHash)||
+    confirmed.txIndex!==candidate.txIndex)
+   fail('RECEIPT_SWAP_DATA_MISMATCH');
  const fee=block.baseFeePerGas;
  if(fee===undefined||fee===null)fail('HISTORICAL_BASE_FEE_MISSING');
  return {...candidate,receiptVerified:true,historicalBaseFeeWei:big(fee).toString(),
