@@ -5,10 +5,10 @@
 This PR only changes `src/main.rs`. It is intentionally separate from Aave executor PR #10 and research PRs #11/#12.
 
 - `POOL_SCAN_ENABLED` defaults to **false** (read-only allowlisted discovery). The legacy pending-transaction strategy requires explicit literal `true`; invalid values fail closed instead of silently activating it. This guards the omitted-variable failure mode. **Do not set this variable to true when configuring the arbitrage scanner.**
-- Gross discovery cycles are deduplicated by **start token and ordered (pool, token-in, token-out) route**. Reverse-direction routes remain distinct. Among multiple probed amounts on the *same* path, retain the largest gross profit, not the first one encountered.
+- Gross discovery cycles are deduplicated by **start token and ordered (pool, token-in, token-out) route**. Reverse-direction routes remain distinct. Among multiple probed amounts on the *same* path, retain the largest margin after the configured Aave premium **before gas**, not the first one encountered.
 - Keep the historical `cycles` discovery metric for compatibility, but add `v2_compatible_gross_candidates` and `incompatible_gross_candidates`. These counts are **gross only** and do not authorize sending. A route with a V3 hop, unknown V2 pool, or a non-30bps V2 fee is not compatible with the current V2-only receiver.
 - Existing per-cycle `net_profit_verified=false`, `configured_gas_cost_wei_unverified` and warnings stay unchanged; we do not claim that a candidate can cover gas.
-- Rust regression tests cover fail-closed scan mode, keeping both route directions, and replacing an early suboptimal amount with the later better probe.
+- Rust regression tests cover fail-closed scan mode, keeping both route directions, replacing an early suboptimal amount with a better probe, and choosing after-premium rather than merely gross profit.
 
 ## What this draft does NOT change
 
