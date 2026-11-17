@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { quoteV2, calculateGasInUsdc, evaluateRoute, parseRound, analyzeSnapshot } from './assess_v2_costs.mjs';
+import { quoteV2, calculateGasInUsdc, evaluateRoute, parseRound, analyzeSnapshot, readV2Snapshot, ADDR } from './assess_v2_costs.mjs';
 
 const p = { usdcReserve: 1000000000000n, wethReserve: 500n * 10n ** 18n };
 const q = { usdcReserve: 1000000000000n, wethReserve: 250n * 10n ** 18n };
@@ -54,4 +54,55 @@ test('report rejects invalid gas inputs and never sends transaction', () => {
   assert.equal(report.assumptions.gasEstimateVerified, false);
   assert.equal(report.assumptions.transactionSubmissionEnabled, false);
   assert.ok(report.routes.every(x => x.approvedForExecution === false));
+});
+
+
+function mockMainnetRpc({ mismatch = false, wrongChain = false } = {}) {
+  const n = v => v.toString(16).padStart(64, '0');
+  const a = v => n(BigInt(v));
+  const args = (...items) => '0x' + items.map(n).join('');
+  const timestamp = 1_800_000_000n;
+  return async (method, params) => {
+    if (method === 'eth_chainId') return wrongChain ? '0xaa36a7' : '0x1';
+    if (method === 'eth_getBlockByNumber') return {
+      number: '0x7b', timestamp: '0x' + timestamp.toString(16), baseFeePerGas: '0x3b9aca00'
+    };
+    if (method === 'eth_getCode') return '0x6001';
+    if (method !== 'eth_call') throw new Error('unexpected method');
+    const to = params[0].to.toLowerCase();
+    const sig = params[0].data.slice(0, 10);
+    if (to === ADDR.aave.toLowerCase() && sig === '0x074b2e43') return args(5n);
+    if ([ADDR.uniPair.toLowerCase(), ADDR.sushiPair.toLowerCase()].includes(to)) {
+      if (sig === '0x0dfe1681') return '0x' + a(ADDR.usdc);
+      if (sig === '0xd21220a7') return '0x' + a(ADDR.weth);
+      if (sig === '0xc45a0155') return '0x' + a(
+        to === ADDR.uniPair.toLowerCase() ? ADDR.uniFactory : ADDR.sushiFactory);
+      if (sig === '0x0902f1ac') return args(1000000000000n, 500n * 10n ** 18n, 0n);
+    }
+    if (sig === '0xe6a43905') {
+      if (to === ADDR.uniFactory.toLowerCase()) return '0x' + a(mismatch ? ADDR.sushiPair : ADDR.uniPair);
+      if (to === ADDR.sushiFactory.toLowerCase()) return '0x' + a(ADDR.sushiPair);
+    }
+    if ([ADDR.ethUsd.toLowerCase(), ADDR.usdcUsd.toLowerCase()].includes(to)) {
+      if (sig === '0x313ce567') return args(8n);
+      if (sig === '0xfeaf968c') return args(12n,
+        to === ADDR.ethUsd.toLowerCase() ? 170000000000n : 99990000n,
+        timestamp - 100n, timestamp - 100n, 12n);
+    }
+    throw new Error('unexpected contract call');
+  };
+}
+
+test('read-only RPC snapshot uses one mainnet block, canonical factories and real Aave getter', async () => {
+  const snap = await readV2Snapshot(mockMainnetRpc());
+  assert.equal(snap.blockNumber, 123n);
+  assert.equal(snap.premiumBps, 5n);
+  assert.equal(snap.ethUsd.decimals, 8);
+  assert.equal(snap.usdcUsd.answer, 99990000n);
+  assert.equal(analyzeSnapshot(snap).routes.length, 8);
+});
+
+test('read-only RPC verification fails closed for wrong chain or wrong V2 factory', async () => {
+  await assert.rejects(() => readV2Snapshot(mockMainnetRpc({ wrongChain: true })), /Mainnet/);
+  await assert.rejects(() => readV2Snapshot(mockMainnetRpc({ mismatch: true })), /identity/);
 });
