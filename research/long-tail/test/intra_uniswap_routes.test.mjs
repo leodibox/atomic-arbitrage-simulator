@@ -85,3 +85,10 @@ test('route cap visibly truncates, does not pretend to cover the search space',(
  assert.equal(r.routeCount,3);
  assert.equal(r.truncated,true);
 });
+
+test('conflicting pool identities at the same address abort the entire inventory',()=>{
+ const original=uniswap5[0];
+ const conflict={...original,token0:USDT};
+ assert.throws(()=>enumerateIntraUniswap(
+   snap([market(USDC,[original,conflict])])),/DUPLICATE_POOL_CONFLICT/);
+});
