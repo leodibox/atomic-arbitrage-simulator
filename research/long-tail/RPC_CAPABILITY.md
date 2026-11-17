@@ -15,8 +15,8 @@ PR #16's 48 economic data points are limited to two control routes and 3 adjacen
 `src/rpc_capability.mjs` reads the existing checkpoint, verifies chain ID and the original final-block hash, locates the **last failed→first successful boundary** for one canonical factory, and sends at most four narrow event queries:
 
 1. **One block in the known successful window** (provider/selector control)
-2. **One block immediately before successful coverage** (historical-access check)
-3. **Ten historical blocks** only if the old one-block succeeds
+2. **Oldest block of the original failed window** (historical-access check; same start used below)
+3. **Ten historical blocks with the same oldest block** only if the old one-block succeeds
 4. **The original failed window** only if the ten-block query succeeds
 
 Including chain ID and pinned header, there are **at most six RPC requests**. Each failed request is recorded; no silent fallback, retries, 7-day backfill, or marking a missing range complete.
@@ -44,7 +44,7 @@ DISCOVERY_CHECKPOINT=evidence/run-26437145-full/discovery.json \
 
 Optional `DIAG_FACTORY=SushiV2` or `UniswapV3` to test their boundaries independently (each run up to 6 RPC requests), `DIAG_OUTPUT=/private/path/diagnostic.json` to keep output in a controlled file. In a proxy-restricted Codex runtime `NODE_USE_ENV_PROXY=1` may be necessary with normal TLS verification.
 
-**Test status:** unit tests were authored, but cannot be claimed PASSED until Codex runs them. No Ethereum network diagnostic was run during PR creation.
+**Executed validation:** npm ci completed; the original 7 tests passed, then 3 regression/state tests were added and all 10 passed. The real run used 4 log-diagnostic reads plus 2 independent state reads (6 total). See [RPC_CAPABILITY_RESULTS_20261117.md](RPC_CAPABILITY_RESULTS_20261117.md).
 
 ## No-cost decision tree
 
@@ -55,3 +55,18 @@ Optional `DIAG_FACTORY=SushiV2` or `UniswapV3` to test their boundaries independ
 - Prefer **reusing the saved checkpoint** over paying for a new seven-day scan. If alternatives provide indexed logs, treat them as an *unverified discovery index* until the emitting factory, block, topics, and canonical pool address are independently checked. Indexed data is not a substitute for fork or gas validation.
 
 No trade approval, no signer, no deployment, no Render, no edits to Rust or Solidity, no mergers, no secrets in output. Keep the base PR #16 and this PR in DRAFT. The go/no-go for an executor remains **NO-GO with current evidence**.
+
+## Bounded runner with independent state checks
+
+`src/run_rpc_preflight.mjs` invokes the log diagnostic with its own max-six budget, then `diagnoseState` with a separate max-two budget. It never retries or backfills. The recorded run stopped log probing at the single old block denial, so actual usage was **4+2=6 total**, not eight. The worst-case runner cap is explicitly six plus two; do not describe that as a universal six-call aggregate cap. Output retains only method/params, HTTP status, selected quota headers and normalized error categories. It omits the endpoint, credentials and arbitrary provider message text.
+
+```sh
+NODE_USE_ENV_PROXY=1 \
+DISCOVERY_CHECKPOINT=evidence/run-26437145-full/discovery.json \
+DIAG_OUTPUT=evidence/rpc-capability-20261117/diagnostic.json \
+node src/run_rpc_preflight.mjs
+```
+
+HTTPS_URL is injected securely if available, otherwise this runner identifies its temporary public PublicNode HTTPS fallback. Use a new DIAG_OUTPUT path for any additional run; do not replace evidence silently. State checks read WETH totalSupply() and storage slot 0 at the **same old block** used for the one-block logs request. They test method availability, not token safety or economic viability. The runner compares checkpoint SHA256 before/after.
+
+The old implementation varied both the oldest queried block and range length, which could confuse age policy with a range limit. The corrected comparison fixes the same oldest block for 1/10/full-window queries. Generic JSON-RPC -32xxx codes no longer imply authorization by themselves; HTTP 401/403 and the normalized provider category are reported separately.

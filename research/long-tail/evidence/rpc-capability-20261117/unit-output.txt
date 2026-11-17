@@ -1,0 +1,18 @@
+✔ finds exact denial boundary; refuses incomplete coverage accounting (2.844455ms)
+✔ one-block 403: cannot claim shrinking ranges will fix historical access (0.802742ms)
+✔ old one block and ten work but old full window fails: range restriction (0.7308ms)
+✔ old 10 block fails even when one block succeeds (0.407221ms)
+✔ full old window recovered: marked possibly transient, not coverage repaired (0.427107ms)
+✔ recent check failed makes diagnostic inconclusive (0.62735ms)
+✔ fail closed on wrong chain, block hash or factory address (0.582735ms)
+✔ one/ten/full old queries keep identical oldest block, isolating range from age (0.560404ms)
+✔ generic JSON-RPC invalid-params error is not labeled authorization denial (0.527587ms)
+✔ historical state probes are independent, pinned and exactly two even after one failure (3.817001ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 353.802306

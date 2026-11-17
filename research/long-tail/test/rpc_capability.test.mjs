@@ -27,7 +27,7 @@ function rpcMock({oldError='RPC_HTTP_403',oldTenError=null,oldWindowError=null,
         const f=Number(BigInt(args[0].fromBlock)),t=Number(BigInt(args[0].toBlock));
         if(f>=21&&recentError)throw Error(recentError);
         if(f<=20){
-          const reason=f===20&&t===20?oldError:
+          const reason=f===1&&t===1?oldError:
             t-f+1<=10?oldTenError:oldWindowError;
           if(reason)throw Error(reason);
         }
@@ -40,7 +40,7 @@ function rpcMock({oldError='RPC_HTTP_403',oldTenError=null,oldWindowError=null,
 test('finds exact denial boundary; refuses incomplete coverage accounting',()=>{
  const gap=locateGap(example().discovery,'UniswapV2');
  assert.deepEqual([gap.olderTarget,gap.acceptedTarget,gap.failedBlocks,gap.completedBlocks],
-  [20,21,20,10]);
+  [1,21,20,10]);
  const x=example();x.discovery[0].coverage[1].from=22;
  assert.throws(()=>locateGap(x.discovery,'UniswapV2'),/gaps or overlaps/);
 });
@@ -82,4 +82,21 @@ test('fail closed on wrong chain, block hash or factory address',async()=>{
  await assert.rejects(()=>diagnoseRpc(rpcMock({wrongHash:true}),example()),/hash mismatch/);
  const x=example();x.discovery[0].factory.address='0x1111111111111111111111111111111111111111';
  await assert.rejects(()=>diagnoseRpc(rpcMock(),x),/Factory mismatch/);
+});
+
+test('one/ten/full old queries keep identical oldest block, isolating range from age',async()=>{
+ const rpc=rpcMock({oldError:null});await diagnoseRpc(rpc,example());
+ const old=rpc.calls.filter(([m,p])=>m==='eth_getLogs'&&Number(BigInt(p[0].fromBlock))<21);
+ assert.deepEqual(old.map(([,p])=>[Number(BigInt(p[0].fromBlock)),Number(BigInt(p[0].toBlock))]),[[1,1],[1,10],[1,20]]);
+ assert.ok(rpc.calls.length<=6);
+});
+test('generic JSON-RPC invalid-params error is not labeled authorization denial',async()=>{
+ const x=await diagnoseRpc(rpcMock({oldError:'RPC_ERROR_-32602'}),example());
+ assert.equal(x.finding,'SINGLE_OLD_BLOCK_ERROR');
+});
+test('historical state probes are independent, pinned and exactly two even after one failure',async()=>{
+ const {diagnoseState}=await import('../src/rpc_state_capability.mjs');const calls=[];
+ const r=await diagnoseState({call:async(method,args)=>{calls.push([method,args]);if(method==='eth_call')throw Error('RPC_HTTP_403');return '0x'+'00'.repeat(32);}},123);
+ assert.equal(calls.length,2);assert.deepEqual(calls.map(([m])=>m),['eth_call','eth_getStorageAt']);
+ assert.ok(calls.every(([,p])=>p.at(-1)==='0x7b'));assert.equal(r.ethCall.status,'FAILED');assert.equal(r.storage.status,'SUCCESS');
 });

@@ -6,7 +6,7 @@ import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import {Rpc,FACTORIES,TOPICS,tag,same} from './chain.mjs';
 
-const accessDenied = reason => /RPC_HTTP_(401|403)|RPC_ERROR_-?32\d\d\d/.test(reason);
+const accessDenied = reason => /RPC_HTTP_(401|403)/.test(reason);
 const resultOf = async task => {
   try {const logs=await task();return {status:'SUCCESS',count:logs.length};}
   catch(e){return {status:'FAILED',error:String(e.message||e).slice(0,100)};}
@@ -31,7 +31,8 @@ export function locateGap(discovery, factoryName) {
   if(!boundary)throw Error('No denied-to-successful coverage boundary');
   return {factory:group.factory,failedBlocks,completedBlocks,
     totalBlocks:failedBlocks+completedBlocks,missingWindows:missing.length,
-    olderTarget:boundary.failed.to,
+    olderTarget:boundary.failed.from,
+    olderWindowEnd:boundary.failed.to,
     olderWindowStart:boundary.failed.from,
     acceptedTarget:boundary.accepted.from};
 }
@@ -62,12 +63,12 @@ export async function diagnoseRpc(rpc, checkpoint, {factoryName='UniswapV2'}={})
     finding=accessDenied(older.error)?'SINGLE_OLD_BLOCK_ACCESS_DENIED':'SINGLE_OLD_BLOCK_ERROR';
     recommended='Smaller chunks alone cannot fix this observed one-block failure; verify historical-access permissions with provider';
   }else {
-    olderTen=await resultOf(()=>getLogs(Math.max(gap.olderWindowStart,gap.olderTarget-9),gap.olderTarget));
+    olderTen=await resultOf(()=>getLogs(gap.olderTarget,Math.min(gap.olderWindowEnd,gap.olderTarget+9)));
     if(olderTen.status!=='SUCCESS'){
       finding='RANGE_OR_PROVIDER_LIMIT_AT_TEN_BLOCKS';
       recommended='Confirm permitted range and error family before considering bounded pagination';
     }else {
-      olderWindow=await resultOf(()=>getLogs(gap.olderWindowStart,gap.olderTarget));
+      olderWindow=await resultOf(()=>getLogs(gap.olderWindowStart,gap.olderWindowEnd));
       finding=olderWindow.status==='SUCCESS'?'OLD_WINDOW_NOW_AVAILABLE':'RANGE_OR_PROVIDER_LIMIT_AT_TWO_THOUSAND_BLOCKS';
       recommended=olderWindow.status==='SUCCESS'
         ?'Original failure might have been transient; backfill with checkpoint/hash validation'
