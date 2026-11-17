@@ -15,7 +15,7 @@ interface IAavePoolForFork {
 /// are NOT evidence that Aave integration has passed.
 contract AaveMainnetForkTest is Test {
     address constant AAVE_V3_POOL = 0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2;
-    address constant USDC = 0xA0b86991c6218b36c1d19D4a2e9eB0cE3606eB48;
+    address constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
     address constant RECIPIENT = 0x49826Aa476d6388fcdccAD7b3661597986a53132;
 
     function _fork() private {
@@ -51,7 +51,7 @@ contract AaveMainnetForkTest is Test {
         mockWeth.mint(address(expensive), 250 ether);
 
         FlashLoanArbGuarded arb = new FlashLoanArbGuarded(AAVE_V3_POOL, RECIPIENT);
-        assertEq(arb.pool(), AAVE_V3_POOL, "wrong Aave pool");
+        assertEq(address(arb.pool()), AAVE_V3_POOL, "wrong Aave pool");
         assertEq(arb.profitRecipient(), RECIPIENT, "wrong receiving address");
         arb.setLoanCap(USDC, 20_000e6);
         arb.setApprovedPair(address(cheap), true);
