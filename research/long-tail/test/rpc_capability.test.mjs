@@ -6,7 +6,7 @@ import {FACTORIES} from '../src/chain.mjs';
 const factory=FACTORIES.find(x=>x.name==='UniswapV2');
 const example=()=>({
   chainId:1,endBlock:{number:30,hash:'0x'+'ab'.repeat(32)},discovery:[{
-    factory,events:[],coverage:[
+    factory:{...factory},events:[],coverage:[
       {from:1,to:20,status:'FAILED',reason:'RPC_HTTP_403'},
       {from:21,to:30,status:'COMPLETE',logs:1}
     ]
