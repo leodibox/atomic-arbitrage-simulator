@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "contracts/**"
+      - "scripts/check_aave_wiring*"
       - ".github/workflows/guarded-aave-foundry.yml"
   workflow_dispatch:
 
