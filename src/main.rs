@@ -131,6 +131,7 @@ where
     let unique_tokens: Vec<_> = initial
         .values()
         .flat_map(|p| [p.token0, p.token1])
+        .chain(initial.v3_values().flat_map(|p| [p.token0, p.token1]))
         .collect::<HashSet<_>>()
         .into_iter()
         .collect();
@@ -299,38 +300,26 @@ where
 
             for (amount, starts) in run_amounts {
                 amounts_tried += 1;
-                let mut found = find_cycles(
+                let found = find_cycles(
                     &guard,
                     &starts,
                     amount,
                     sim_max_hops,
                     alloy::primitives::U256::ZERO,
                 );
-                let premium_base = amount * alloy::primitives::U256::from(premium_bps)
+                // Only compare amounts in the SAME loan asset. SIM_GAS_COST_RAW
+                // is wei of native ETH; the first hop's reserve ratio is NOT a
+                // reliable ETH-to-start-token oracle (especially for V3/WETH).
+                // Do not authorize spending or call these post-gas net profits.
+                // Actual submission requires the separate strict preflight,
+                // fresh on-chain call simulation, and independently priced gas.
+                let premium = amount * alloy::primitives::U256::from(premium_bps)
                     / alloy::primitives::U256::from(10_000u64);
                 let mut kept = Vec::new();
                 for c in found {
-                    // gas is denominated in ETH; express it in the cycle's start token
-                    // via hop 1's reserve ratio so it is comparable to gross_profit
-                    let gas_in_start = c
-                        .hops
-                        .first()
-                        .and_then(|h| guard.get(&h.pair).map(|p| (h, p)))
-                        .map(|(h, p)| {
-                            let (r_in, r_out) = if h.token_in == p.token0 {
-                                (p.reserve0, p.reserve1)
-                            } else {
-                                (p.reserve1, p.reserve0)
-                            };
-                            if r_out.is_zero() {
-                                alloy::primitives::U256::ZERO
-                            } else {
-                                alloy::primitives::U256::from(gas_cost_raw) * r_in / r_out
-                            }
-                        })
-                        .unwrap_or(alloy::primitives::U256::ZERO);
-                    let costs = premium_base + gas_in_start;
-                    if c.gross_profit > costs && c.gross_profit - costs >= min_net {
+                    if c.gross_profit > premium
+                        && c.gross_profit - premium >= min_net
+                    {
                         kept.push(c);
                     } else if c.gross_profit > alloy::primitives::U256::ZERO {
                         near_miss_list.push((c.gross_profit, c.hops.len()));
@@ -369,23 +358,32 @@ where
             max_hops = sim_max_hops,
             premium_bps,
             gas_cost_raw,
-            "arbitrage simulation"
+            "arbitrage discovery (gross candidates only, not live-trade signals)"
         );
 
         for cycle in cycles.iter().take(5) {
+            // Aave premium is in loan asset raw units. This is intentionally
+            // PRE-GAS only: real net profit has not been independently verified.
             let premium = cycle.amount_in * alloy::primitives::U256::from(premium_bps)
                 / alloy::primitives::U256::from(10_000u64);
-            let net = cycle
-                .gross_profit
-                .saturating_sub(premium + alloy::primitives::U256::from(gas_cost_raw));
+            let margin_before_gas = cycle.gross_profit.saturating_sub(premium);
+            let v2_contract_compatible = {
+                let guard = cache.read().await;
+                cycle.hops.iter().all(|hop| guard.get(&hop.pair)
+                    .is_some_and(|pool| pool.fee_bps == 30))
+            };
             info!(
-                gross_profit = %cycle.gross_profit,
-                net_profit = %net,
+                gross_profit_raw = %cycle.gross_profit,
+                margin_after_premium_before_gas_raw = %margin_before_gas,
+                net_profit_verified = false,
+                v2_contract_compatible,
+                configured_gas_cost_wei_unverified = gas_cost_raw,
                 amount_in = %cycle.amount_in,
                 amount_out = %cycle.amount_out,
+                start_asset = %cycle.start,
                 hops = cycle.hops.len(),
                 freshest_block = cycle.freshest_block,
-                "simulated cycle"
+                "gross discovery candidate — NOT approved for execution"
             );
         }
 
@@ -433,6 +431,18 @@ mod scanner_tests {
     #[test]
     fn six_decimal_amount_units() {
         assert_eq!(pow10(6), U256::from(1_000_000u64));
+    }
+
+    #[test]
+    fn reported_candidate_is_not_after_gas_profit() {
+        // 100 USDC borrowed, 100.122318 USDC returned (6 decimals).
+        // 5 bps flash-loan premium = 0.05 USDC; 0.072318 USDC
+        // remains BEFORE ETH gas and any failed-transaction costs.
+        let amount = U256::from(100_000_000u64);
+        let gross = U256::from(122_318u64);
+        let premium = amount * U256::from(5u64) / U256::from(10_000u64);
+        assert_eq!(premium, U256::from(50_000u64));
+        assert_eq!(gross - premium, U256::from(72_318u64));
     }
 
     #[test]
