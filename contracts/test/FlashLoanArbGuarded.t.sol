@@ -45,6 +45,47 @@ contract FlashLoanArbGuardedTest is Test {
         assertEq(usdc.balanceOf(address(0xBEEF)), profit);
     }
 
+    function test_autoPayoutDisabledUntilOwnerExplicitlyEnables() public {
+        assertEq(arb.autoPayout(), false, "disabled by default");
+        uint256 recipientBefore = usdc.balanceOf(address(0xBEEF));
+        arb.executeArbitrage(address(usdc), 10_000e6, pathGood(), 1);
+        assertEq(usdc.balanceOf(address(0xBEEF)), recipientBefore);
+        assertGt(usdc.balanceOf(address(arb)), 0, "surplus stays inside contract");
+    }
+
+    function test_autoPayoutOnlyAfterAaveRepayment() public {
+        arb.setAutoPayout(true);
+        uint256 poolBefore = usdc.balanceOf(address(aave));
+        uint256 recipientBefore = usdc.balanceOf(address(0xBEEF));
+        uint256 floatBefore = usdc.balanceOf(address(arb));
+        arb.executeArbitrage(address(usdc), 10_000e6, pathGood(), 1);
+        // MockPool pulls principal+premium before flashLoanSimple returns.
+        assertGt(usdc.balanceOf(address(aave)), poolBefore);
+        assertGt(usdc.balanceOf(address(0xBEEF)), recipientBefore);
+        assertEq(usdc.balanceOf(address(arb)), floatBefore,
+            "auto payout cannot take pre-existing contract funds");
+    }
+
+    function test_autoPayoutDoesNotTransferIfWholeFlashloanReverts() public {
+        arb.setAutoPayout(true);
+        uint256 walletBefore = usdc.balanceOf(address(0xBEEF));
+        vm.expectRevert(FlashLoanArbGuarded.Unprofitable.selector);
+        arb.executeArbitrage(address(usdc), 10_000e6, pathGood(), 1_000_000e6);
+        assertEq(usdc.balanceOf(address(0xBEEF)), walletBefore,
+            "failed atomic attempt must not credit recipient");
+    }
+
+    function test_onlyOwnerCanSetAutoPayout() public {
+        vm.prank(address(0xBADC0DE));
+        vm.expectRevert(FlashLoanArbGuarded.NotOwner.selector);
+        arb.setAutoPayout(true);
+        assertEq(arb.autoPayout(), false);
+        arb.setAutoPayout(true);
+        assertEq(arb.autoPayout(), true);
+        arb.setAutoPayout(false);
+        assertEq(arb.autoPayout(), false);
+    }
+
     function test_pausedByDefaultAndEmergencyPause() public {
         arb.setPaused(true);
         vm.expectRevert(FlashLoanArbGuarded.Paused.selector);
