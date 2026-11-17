@@ -49,7 +49,7 @@ test('one verified triangle exists in both directions, without same-token loops'
  const triangle=[
    pool(30,WETH,USDC,{fee:100}),
    pool(31,USDC,USDT,{fee:500}),
-   pool(32,USDT,WETH,{kind:'v2'})
+   pool(32,USDT,WETH,{kind:'v2',fee:3000})
  ];
  const r=enumerateIntraUniswap(snap([market(USDC,triangle)]));
  assert.equal(r.counts.triangles,2);
