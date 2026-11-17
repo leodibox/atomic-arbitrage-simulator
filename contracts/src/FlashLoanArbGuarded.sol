@@ -28,6 +28,9 @@ contract FlashLoanArbGuarded {
     address public immutable profitRecipient;
     IGuardedAavePool public immutable pool;
     bool public paused = true;
+    // Opt-in only: funds stay in the contract unless the owner explicitly
+    // enables automatic payout to the immutable recipient after Aave repays.
+    bool public autoPayout;
 
     // All are opt-in. Zero maxLoanRaw disables a flash-loan asset.
     mapping(address => uint256) public maxLoanRaw;
@@ -47,6 +50,8 @@ contract FlashLoanArbGuarded {
     error ZeroAddress();
 
     event PausedSet(bool paused);
+    event AutoPayoutSet(bool enabled);
+    event ProfitPaid(address indexed asset, address indexed recipient, uint256 amount);
     event LoanCapSet(address indexed asset, uint256 capRaw);
     event PairApprovalSet(address indexed pair, bool allowed);
     event FlashLoanExecuted(address indexed asset, uint256 borrowed, uint256 premium, uint256 profit);
@@ -68,6 +73,14 @@ contract FlashLoanArbGuarded {
     function setPaused(bool value) external onlyOwner {
         paused = value;
         emit PausedSet(value);
+    }
+
+    /// @notice Off by default; only the immutable profitRecipient can receive
+    /// realized gains automatically, and only after Aave takes repayment.
+    function setAutoPayout(bool enabled) external onlyOwner {
+        if (inFlight) revert Reentrant();
+        autoPayout = enabled;
+        emit AutoPayoutSet(enabled);
     }
 
     function setLoanCap(address asset, uint256 capRaw) external onlyOwner {
@@ -98,8 +111,20 @@ contract FlashLoanArbGuarded {
         if (minProfit == 0 || (path.length != 42 && path.length != 63))
             revert BadPath();
 
+        // FlashLoanSimple repays by pulling amount+premium AFTER executeOperation
+        // returns. Only count and transfer the new balance AFTER the pool call
+        // returns successfully, never before its repayment.
+        uint256 originalBalance = IGuardedToken(asset).balanceOf(address(this));
         inFlight = true;
         pool.flashLoanSimple(address(this), asset, amount, abi.encode(path, minProfit), 0);
+        uint256 settledBalance = IGuardedToken(asset).balanceOf(address(this));
+        if (settledBalance <= originalBalance) revert Unprofitable();
+        uint256 realizedProfit = settledBalance - originalBalance;
+        if (realizedProfit < minProfit) revert Unprofitable();
+        if (autoPayout) {
+            _safeTransfer(asset, profitRecipient, realizedProfit);
+            emit ProfitPaid(asset, profitRecipient, realizedProfit);
+        }
         inFlight = false;
     }
 
