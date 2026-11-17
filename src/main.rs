@@ -300,7 +300,7 @@ where
 
             for (amount, starts) in run_amounts {
                 amounts_tried += 1;
-                let mut found = find_cycles(
+                let found = find_cycles(
                     &guard,
                     &starts,
                     amount,
@@ -377,7 +377,7 @@ where
                 margin_after_premium_before_gas_raw = %margin_before_gas,
                 net_profit_verified = false,
                 v2_contract_compatible,
-                gas_budget_wei = gas_cost_raw,
+                configured_gas_cost_wei_unverified = gas_cost_raw,
                 amount_in = %cycle.amount_in,
                 amount_out = %cycle.amount_out,
                 start_asset = %cycle.start,
