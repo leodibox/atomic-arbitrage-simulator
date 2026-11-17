@@ -25,7 +25,7 @@ async function main(){
  const inv=JSON.parse(await readFile(invPath,'utf8')),index=buildPoolIndex(inv);
  const window=safeInteger(process.env.SWAP_WINDOW_BLOCKS,48,1,128);
  const limit=safeInteger(process.env.SWAP_MAX_CANDIDATES,8,1,12);
- const maxCalls=3+2*limit;let count=0;
+ const maxCalls=4+2*limit;let count=0;
  async function rpc(method,params){
    if(!['eth_chainId','eth_getBlockByNumber','eth_getLogs','eth_getTransactionReceipt'].includes(method))
      throw Error('NON_READ_ONLY_RPC_METHOD');
@@ -40,6 +40,9 @@ async function main(){
  }
  const chainId=BigInt(await rpc('eth_chainId',[]));
  if(chainId!==1n)throw Error('WRONG_CHAIN');
+ const inventoryHeader=await rpc('eth_getBlockByNumber',['0x'+index.blockNumber.toString(16),false]);
+ if(inventoryHeader?.hash?.toLowerCase()!==index.blockHash.toLowerCase())
+   throw Error('INVENTORY_BLOCK_HASH_MISMATCH');
  const end=await rpc('eth_getBlockByNumber',['finalized',false]);
  if(!/^0x[0-9a-f]{64}$/i.test(end.hash||''))throw Error('FINALIZED_HASH_MISSING');
  const endNumber=Number(BigInt(end.number));
