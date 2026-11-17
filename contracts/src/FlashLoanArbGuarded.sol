@@ -156,31 +156,33 @@ contract FlashLoanArbGuarded {
         if (startBalance < amount) revert Unprofitable();
         uint256 priorBalance = startBalance - amount;
 
-        uint256 currentAmount = amount;
-        address currentToken = asset;
-        address[] memory seen = new address[](path.length / 21);
+        {
+            uint256 currentAmount = amount;
+            address currentToken = asset;
+            address[] memory seen = new address[](path.length / 21);
 
-        for (uint256 i = 0; i < seen.length; ++i) {
-            uint256 offset = i * 21;
-            address pairAddress;
-            uint8 direction;
-            assembly {
-                let base := add(path, 32)
-                pairAddress := shr(96, mload(add(base, offset)))
-                direction := byte(0, mload(add(base, add(offset, 20))))
+            for (uint256 i = 0; i < seen.length; ++i) {
+                uint256 offset = i * 21;
+                address pairAddress;
+                uint8 direction;
+                assembly {
+                    let base := add(path, 32)
+                    pairAddress := shr(96, mload(add(base, offset)))
+                    direction := byte(0, mload(add(base, add(offset, 20))))
+                }
+
+                if (pairAddress == address(0) || direction > 1) revert BadPath();
+                if (!approvedPair[pairAddress]) revert UnapprovedPair();
+                for (uint256 j = 0; j < i; ++j) {
+                    if (seen[j] == pairAddress) revert BadPath();
+                }
+                seen[i] = pairAddress;
+
+                (currentToken, currentAmount) =
+                    _executeV2Hop(pairAddress, direction == 1, currentToken, currentAmount);
             }
-
-            if (pairAddress == address(0) || direction > 1) revert BadPath();
-            if (!approvedPair[pairAddress]) revert UnapprovedPair();
-            for (uint256 j = 0; j < i; ++j) {
-                if (seen[j] == pairAddress) revert BadPath();
-            }
-            seen[i] = pairAddress;
-
-            (currentToken, currentAmount) =
-                _executeV2Hop(pairAddress, direction == 1, currentToken, currentAmount);
+            if (currentToken != asset) revert BadPath();
         }
-        if (currentToken != asset) revert BadPath();
 
         uint256 owed = amount + premium;
         uint256 finalBalance = IGuardedToken(asset).balanceOf(address(this));

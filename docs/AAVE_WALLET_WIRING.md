@@ -72,18 +72,18 @@ read-only check runs against the actual deployed address.
 
 ## GitHub Actions runner limitation
 
-GitHub Actions for this repository has failed before starting a usable Foundry
-job, and there is currently no trusted `forge`/Solidity compiler available in
-this chat runtime. The workflow also includes the dependency-free Node verifier
-tests. The PR therefore remains in **draft** with no production deployment.
-The repository owner should check **GitHub Settings → Billing and licensing**
-and **Settings → Actions → General**, or use an already configured trusted
-Foundry development computer to produce the real test/compile results. Do not
-merge based only on source inspection.
+Local validation on 2026-11-17 now uses Foundry 1.7.1 and verified Solc
+0.8.24. Compilation and the mock integration suite pass. The canonical Aave
+mainnet-fork tests are **SKIPPED** because HTTPS_URL is not configured. See
+[AAVE_INTEGRATION_TEST_RESULTS.md](AAVE_INTEGRATION_TEST_RESULTS.md) for every
+executed/skipped test and the toolchain versions. This is local evidence;
+GitHub Actions was not rerun or verified here. The GitHub API returned Forbidden,
+so the PR's current draft status could not be independently confirmed or changed.
+Do not merge based only on local mock tests.
 
 ## Solidity and Aave execution gates
 
-- Install a working Foundry toolchain and forge-std (the current GitHub Actions Foundry job failed without usable logs); run `cd contracts && forge build && forge test -vvv`, then Ethereum-mainnet **fork** and fuzz/invariant tests.
+- Local compilation, mock integration tests and payout fuzzing pass; Ethereum-mainnet **fork** validation and a broader invariant campaign remain required. Re-run `cd contracts && forge build && forge test -vvv` with a securely configured HTTPS_URL.
 - Independently review the guarded receiver, reentrancy assumptions, ERC-20 behavior, and pairs approved through `setApprovedPair`. No Uniswap V3/V4 paths are executable by this V2-only contract.
 - Verify deployed bytecode, pool, owner, recipient, flash liquidity and actual premium, plus that candidate routes are 30 bps V2-compatible at the latest block.
 - Implement a **single-writer nonce-fenced signer**, executable-route verification, `eth_call`, `eth_estimateGas`, independently priced ETH→asset gas, transaction deadline, max transaction fee, hard daily gas/loss budget, emergency stop, and receipt-based realized P&L.
