@@ -5,7 +5,7 @@ export const TOPICS=Object.freeze({
   v3:'0xc42079f94a6350d7e6235f2917495a9d78ff82dd33fbb8f9195e7590c9de8d3'
 });
 const WETH='0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2';
-const FACTORY={v2:'0x5c69bee701ef814a2b6a3edd4b1652cb9cca6f',v3:'0x1f98431c8ad98523631ae4a59f267346ea31f984'};
+const FACTORY={v2:'0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f',v3:'0x1f98431c8ad98523631ae4a59f267346ea31f984'};
 const fail=m=>{throw Error(m)};
 const address=x=>typeof x==='string'&&/^0x[0-9a-f]{40}$/i.test(x);
 const hash=x=>typeof x==='string'&&/^0x[0-9a-f]{64}$/i.test(x);
