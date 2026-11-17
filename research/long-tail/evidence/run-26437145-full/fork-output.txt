@@ -1,0 +1,25 @@
+Compiling 1 files with Solc 0.8.24
+Solc 0.8.24 finished in 2.58s
+Compiler run successful!
+
+Ran 3 tests for test/Settlement.t.sol:LongTailSettlementTest
+[PASS] test_candidate0() (gas: 521925)
+Logs:
+  observed_margin_WETH_wei: 2346700951391
+  callback_gas_warm: 217369
+  probe_call_gas_warm: 249450
+  pool_first: 0xE0554a476A092703abdB3Ef35c80e0D76d32939F
+  pool_second: 0x397FF1542f962076d0BFE58eA045FfA2d347ACa0
+
+[PASS] test_candidate1() (gas: 510791)
+Logs:
+  observed_margin_WETH_wei: -185608057284
+  callback_gas_warm: 206256
+  probe_call_gas_warm: 238337
+  pool_first: 0xE0554a476A092703abdB3Ef35c80e0D76d32939F
+  pool_second: 0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc
+
+[SKIP] test_candidate2() (gas: 0)
+Suite result: ok. 2 passed; 0 failed; 1 skipped; finished in 4.58s (7.95s CPU time)
+
+Ran 1 test suite in 4.59s (4.58s CPU time): 2 tests passed, 0 failed, 1 skipped (3 total tests)

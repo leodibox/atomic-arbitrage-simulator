@@ -1,0 +1,31 @@
+
+> test
+> node --test test/*.test.mjs
+
+✔ integer V2 fees and marginal-negative static curve are not profitable at any sampled size (1.799772ms)
+✔ static-V2 sizing agrees with brute force within integer rounding tolerance (6.25379ms)
+✔ no break-even is fabricated if gas exceeds maximum gross curve (0.306251ms)
+✔ gas scenarios and reversion EV use WETH/ETH units and no execution flags (0.459274ms)
+✔ integer sqrt floor and invalid reserves (1.055527ms)
+✔ RPC denies transaction and bundle methods before any network request (1.16704ms)
+✔ event scanning records partial RPC coverage instead of inventing pools (0.842761ms)
+✔ real event ABI decodes pair and rejects other emitter (9.384504ms)
+✔ stratified resource cap preserves endpoints and never fabricates tokens (1.619251ms)
+✔ historical counterpart lookup checks all fee tiers including missing venues (0.982583ms)
+✔ weak positive gross margin has no attainable EV break-even probability (0.305511ms)
+✔ V3 reference quote carries tick crossings and exact pinned block (0.580282ms)
+✔ invalid event emitter is excluded rather than accepted as a discovered pool (0.931614ms)
+✔ factory-discovered spoofed pool identity never enters verified pool inventory (0.830558ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 358.341445
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.2
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.2
+npm notice To update run: npm install -g npm@12.2.2
+npm notice
