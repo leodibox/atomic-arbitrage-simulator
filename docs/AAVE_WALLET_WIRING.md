@@ -72,18 +72,18 @@ read-only check runs against the actual deployed address.
 
 ## GitHub Actions runner limitation
 
-Local validation on 2026-11-17 now uses Foundry 1.7.1 and verified Solc
-0.8.24. Compilation and the mock integration suite pass. The canonical Aave
-mainnet-fork tests are **SKIPPED** because HTTPS_URL is not configured. See
-[AAVE_INTEGRATION_TEST_RESULTS.md](AAVE_INTEGRATION_TEST_RESULTS.md) for every
-executed/skipped test and the toolchain versions. This is local evidence;
-GitHub Actions was not rerun or verified here. The GitHub API returned Forbidden,
-so the PR's current draft status could not be independently confirmed or changed.
-Do not merge based only on local mock tests.
+Local validation on 2026-11-17 uses Foundry 1.7.1 and verified Solc 0.8.24.
+Compilation and mock integration tests pass. Four canonical-Aave/real-V2 fork
+tests also pass at finalized Mainnet block 26436156 via a temporary public HTTPS
+RPC (chain ID 1). No private HTTPS_URL binding was configured. The real routes
+were unprofitable and correctly reverted; the successful payout test uses
+synthetic AMMs. See [the detailed fork/gas report](AAVE_MAINNET_FORK_CERTIFICATION.md).
+GitHub PR #10 is confirmed OPEN and DRAFT. Local validation does not establish
+CI status, audit completion or deployment readiness.
 
 ## Solidity and Aave execution gates
 
-- Local compilation, mock integration tests and payout fuzzing pass; Ethereum-mainnet **fork** validation and a broader invariant campaign remain required. Re-run `cd contracts && forge build && forge test -vvv` with a securely configured HTTPS_URL.
+- Local compilation, mock integration tests, payout fuzzing and the scoped Ethereum-mainnet **fork** tests pass; a broader invariant campaign and independently reviewed live configuration remain required. Re-run `cd contracts && forge build && forge test -vvv` with a securely configured HTTPS_URL.
 - Independently review the guarded receiver, reentrancy assumptions, ERC-20 behavior, and pairs approved through `setApprovedPair`. No Uniswap V3/V4 paths are executable by this V2-only contract.
 - Verify deployed bytecode, pool, owner, recipient, flash liquidity and actual premium, plus that candidate routes are 30 bps V2-compatible at the latest block.
 - Implement a **single-writer nonce-fenced signer**, executable-route verification, `eth_call`, `eth_estimateGas`, independently priced ETH→asset gas, transaction deadline, max transaction fee, hard daily gas/loss budget, emergency stop, and receipt-based realized P&L.

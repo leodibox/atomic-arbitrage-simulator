@@ -1,5 +1,7 @@
 # Aave executor integration validation — 2026-11-17
 
+This is the earlier offline validation. See [the follow-up mainnet-fork report](AAVE_MAINNET_FORK_CERTIFICATION.md) for four executed and passing Aave/real-V2 fork tests at block 26436156.
+
 Branch: `feature/guarded-aave-v2-executor-20261117`. Starting commit: `cf25a6ff872ffef65ab44b1d393bcff24c5b616b`. Changes in this validation do not modify `src/`, Rust manifests or the production scanner.
 
 ## Results
