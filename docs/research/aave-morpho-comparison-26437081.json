@@ -1,0 +1,127 @@
+{
+  "blockNumber": "26437081",
+  "blockHash": "0x004d642a9bac97acd90b62a46bbfc44245f91273cd2512bb379311fe5c2807e3",
+  "address": "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2",
+  "method": "eth_call",
+  "data": "0x074b2e43",
+  "sourceEvidence": "morpho-v3-mainnet-26437081.json",
+  "originalObservedPremiumBps": "5",
+  "repeatStatus": "BLOCKED",
+  "repeatError": "RPC rejected with HTTP 403",
+  "amountComparisons": [
+    {
+      "asset": "WETH",
+      "decimals": 18,
+      "principalRaw": "10000000000000000",
+      "morphoObservedPremiumRaw": "0",
+      "aaveStandardPremiumCalculatedRaw": "5000000000000",
+      "fundingSavingRaw": "5000000000000",
+      "aaveLoanExecutedInThisComparison": false,
+      "gasCompared": false,
+      "executable": false
+    },
+    {
+      "asset": "WETH",
+      "decimals": 18,
+      "principalRaw": "1000000000000000000",
+      "morphoObservedPremiumRaw": "0",
+      "aaveStandardPremiumCalculatedRaw": "500000000000000",
+      "fundingSavingRaw": "500000000000000",
+      "aaveLoanExecutedInThisComparison": false,
+      "gasCompared": false,
+      "executable": false
+    },
+    {
+      "asset": "WETH",
+      "decimals": 18,
+      "principalRaw": "10000000000000000000",
+      "morphoObservedPremiumRaw": "0",
+      "aaveStandardPremiumCalculatedRaw": "5000000000000000",
+      "fundingSavingRaw": "5000000000000000",
+      "aaveLoanExecutedInThisComparison": false,
+      "gasCompared": false,
+      "executable": false
+    },
+    {
+      "asset": "USDC",
+      "decimals": 6,
+      "principalRaw": "100000000",
+      "morphoObservedPremiumRaw": "0",
+      "aaveStandardPremiumCalculatedRaw": "50000",
+      "fundingSavingRaw": "50000",
+      "aaveLoanExecutedInThisComparison": false,
+      "gasCompared": false,
+      "executable": false
+    },
+    {
+      "asset": "USDC",
+      "decimals": 6,
+      "principalRaw": "10000000000",
+      "morphoObservedPremiumRaw": "0",
+      "aaveStandardPremiumCalculatedRaw": "5000000",
+      "fundingSavingRaw": "5000000",
+      "aaveLoanExecutedInThisComparison": false,
+      "gasCompared": false,
+      "executable": false
+    },
+    {
+      "asset": "USDC",
+      "decimals": 6,
+      "principalRaw": "1000000000000",
+      "morphoObservedPremiumRaw": "0",
+      "aaveStandardPremiumCalculatedRaw": "500000000",
+      "fundingSavingRaw": "500000000",
+      "aaveLoanExecutedInThisComparison": false,
+      "gasCompared": false,
+      "executable": false
+    }
+  ],
+  "routeComparisons": [
+    {
+      "test": "testEconomy_5bpThenV2Morpho",
+      "principalWethWei": "100000000000000000",
+      "morphoRealizedPreGasMarginWei": "-370919545914475",
+      "aaveCalculatedPreGasMarginWei": "-420919545914475",
+      "aaveStandardPremiumWei": "50000000000000",
+      "aaveRouteExecuted": false,
+      "executable": false
+    },
+    {
+      "test": "testEconomy_5bpThenSame5bpMorpho",
+      "principalWethWei": "100000000000000000",
+      "morphoRealizedPreGasMarginWei": "-99975739812267",
+      "aaveCalculatedPreGasMarginWei": "-149975739812267",
+      "aaveStandardPremiumWei": "50000000000000",
+      "aaveRouteExecuted": false,
+      "executable": false
+    },
+    {
+      "test": "testEconomy_1bpThenSame1bpMorpho",
+      "principalWethWei": "100000000000000000",
+      "morphoRealizedPreGasMarginWei": "-19999304545897",
+      "aaveCalculatedPreGasMarginWei": "-69999304545897",
+      "aaveStandardPremiumWei": "50000000000000",
+      "aaveRouteExecuted": false,
+      "executable": false
+    },
+    {
+      "test": "testEconomy_5bpThen1bpMorpho",
+      "principalWethWei": "100000000000000000",
+      "morphoRealizedPreGasMarginWei": "-15532787652663",
+      "aaveCalculatedPreGasMarginWei": "-65532787652663",
+      "aaveStandardPremiumWei": "50000000000000",
+      "aaveRouteExecuted": false,
+      "executable": false
+    },
+    {
+      "test": "testEconomy_1bpThen5bpMorpho",
+      "principalWethWei": "100000000000000000",
+      "morphoRealizedPreGasMarginWei": "-107380591871308",
+      "aaveCalculatedPreGasMarginWei": "-157380591871308",
+      "aaveStandardPremiumWei": "50000000000000",
+      "aaveRouteExecuted": false,
+      "executable": false
+    }
+  ],
+  "conclusion": "5bp fee saving only; no profitable sampled route or execution authorization"
+}

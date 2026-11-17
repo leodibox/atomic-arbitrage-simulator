@@ -63,6 +63,35 @@ No se consultaron balances de mercados individuales ni se usó totalSupplyAssets
 
 Aave V3 Ethereum Pool `0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2`: código presente y **FLASHLOAN_PREMIUM_TOTAL = 5 bps**. Es una lectura de prima, no un nuevo préstamo Aave ni modificación de PR #10.
 
+### Referencia comparativa de financiación Aave frente a Morpho
+
+Lectura original **directa** al contrato oficial Ethereum Aave V3 `0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2`: `eth_call` con selector `0x074b2e43` (`FLASHLOAN_PREMIUM_TOTAL()`), bloque **26437081**, hash `0x004d642a9bac97acd90b62a46bbfc44245f91273cd2512bb379311fe5c2807e3`. Es exactamente el bloque de Morpho, pools V3 y las 33 pruebas de fork. Resultado original conservado en snapshot: **5 bps = 0,05%**; no se usa una constante como sustituto de la consulta.
+
+El nuevo intento de repetir esa lectura histórica recibió **HTTP 403**. Su estado es **BLOCKED**, no PASS; se mantiene la evidencia original sin sustituirla por latest ni mezclar otro bloque. [Registro de llamada, replay y cálculos](research/aave-morpho-comparison-26437081.json).
+
+| Asset | Principal | Prima Morpho observada | Prima estándar Aave calculada (5 bps) | Ahorro de prima |
+| --- | ---: | ---: | ---: | ---: |
+| WETH | 0.01 | 0 | 0.000005 | 0.000005 |
+| WETH | 1 | 0 | 0.0005 | 0.0005 |
+| WETH | 10 | 0 | 0.005 | 0.005 |
+| USDC | 100 | 0 | 0.05 | 0.05 |
+| USDC | 10000 | 0 | 5 | 5 |
+| USDC | 1000000 | 0 | 500 | 500 |
+
+Morpho 0 corresponde al comportamiento de los seis préstamos efectivamente devueltos en ese fork. Aave es una **comparación de prima estándar calculada** para los mismos assets/importes; no se ejecutó otro préstamo Aave, no se certificó acceso o exención de fees y no se modificó su contrato ni PR #10. Todos los importes producen prima entera exacta en la unidad raw, por lo que el redondeo porcentual no altera esta tabla.
+
+Para las cinco rutas de 0,1 WETH, el ahorro de prima es **0,00005 WETH** por intento completado. Se mantienen exactamente los outputs/swaps medidos bajo Morpho y solo se resta la prima estándar Aave como referencia; no se simula una ruta Aave distinta ni se asume que sus costes de gas sean iguales:
+
+| Ruta | Margen Morpho antes de gas WETH | Margen comparativo Aave antes de gas WETH |
+| --- | ---: | ---: |
+| `testEconomy_5bpThenV2Morpho` | -0.000370919545914475 | -0.000420919545914475 |
+| `testEconomy_5bpThenSame5bpMorpho` | -0.000099975739812267 | -0.000149975739812267 |
+| `testEconomy_1bpThenSame1bpMorpho` | -0.000019999304545897 | -0.000069999304545897 |
+| `testEconomy_5bpThen1bpMorpho` | -0.000015532787652663 | -0.000065532787652663 |
+| `testEconomy_1bpThen5bpMorpho` | -0.000107380591871308 | -0.000157380591871308 |
+
+El ahorro de 5 bps no elimina las comisiones de swaps, el impacto de precio, gas, reversión o selección adversa. Todas estas rutas ya pierden con financiación Morpho sin prima; por tanto no se declara ninguna rentable ni autorizada. No se repite la certificación Aave del PR #10: no apareció una incompatibilidad demostrada. Una comparación completa de coste total requeriría medir ambos calldata/gas con sus callbacks y condiciones reales, además del riesgo de ejecución; esta tabla no suplanta ese análisis.
+
 Factory V3 `0x1F98431c8aD98523631AE4a59f267346ea31F984`: getPool(USDC,WETH,fee), código, factory(), tokens y fee verificados.
 
 | Tarifa | Pool | Liquidez activa L raw |
