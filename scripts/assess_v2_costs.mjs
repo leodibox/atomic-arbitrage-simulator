@@ -74,13 +74,17 @@ export function parseRound(data, timestamp, maxAgeSeconds) {
   return { answer, updatedAt };
 }
 
-export async function readV2Snapshot(rpc) {
+export async function readV2Snapshot(rpc, { blockTag: selectedBlock = 'latest' } = {}) {
+  if (!/^(latest|safe|finalized|0x[0-9a-fA-F]+)$/.test(selectedBlock))
+    throw new Error('Invalid V2_BLOCK_TAG');
   const chain = BigInt(await rpc('eth_chainId', []));
   if (chain !== 1n) throw new Error('Expected Ethereum Mainnet chain ID 1');
-  const block = await rpc('eth_getBlockByNumber', ['latest', false]);
+  const block = await rpc('eth_getBlockByNumber', [selectedBlock, false]);
   if (!block?.number || !block?.timestamp || !block?.baseFeePerGas)
     throw new Error('Missing EIP-1559 block metadata');
   const blockNumber = BigInt(block.number);
+  if (selectedBlock.startsWith('0x') && blockNumber !== BigInt(selectedBlock))
+    throw new Error('RPC returned a different block than requested');
   const blockTag = hexBlock(blockNumber);
   const blockTime = BigInt(block.timestamp);
   const baseFeeWei = BigInt(block.baseFeePerGas);
@@ -115,7 +119,7 @@ export async function readV2Snapshot(rpc) {
   ]);
   const premiumBps = word(premium);
   if (premiumBps > 1000n) throw new Error('Unreasonably large Aave premium');
-  return { blockNumber, blockTime, baseFeeWei, uni, sushi, ethUsd, usdcUsd, premiumBps };
+  return { blockNumber, blockHash: block.hash, blockTime, baseFeeWei, uni, sushi, ethUsd, usdcUsd, premiumBps };
 }
 
 export function analyzeSnapshot(snapshot, { gasUnits = 400000n, priorityFeeWei = 1000000000n,
@@ -133,7 +137,7 @@ export function analyzeSnapshot(snapshot, { gasUnits = 400000n, priorityFeeWei =
       evaluated.push({ route: name, ...metrics });
     }
   }
-  return { blockNumber: snapshot.blockNumber, premiumBps: snapshot.premiumBps, gas,
+  return { blockNumber: snapshot.blockNumber, premiumBps: snapshot.premiumBps, snapshot, gas,
     assumptions: { gasUnits, priorityFeeWei, bufferBps, source: 'V2 reserves and Chainlink oracle at a single sampled block',
       gasEstimateVerified: false, executableCalldataVerified: false, transactionSubmissionEnabled: false },
     routes: evaluated };
@@ -159,7 +163,8 @@ export async function jsonRpc(url, method, params = [], fetchFn = fetch) {
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
   try {
     const url = process.env.HTTPS_URL;
-    const snapshot = await readV2Snapshot((method, params) => jsonRpc(url, method, params));
+    const snapshot = await readV2Snapshot((method, params) => jsonRpc(url, method, params),
+      { blockTag: process.env.V2_BLOCK_TAG || 'latest' });
     const report = analyzeSnapshot(snapshot);
     console.log(JSON.stringify({ ...plain(report),
       presentation: report.routes.map(r => ({ route: r.route, inputUSDC: usdc(r.amountRaw),

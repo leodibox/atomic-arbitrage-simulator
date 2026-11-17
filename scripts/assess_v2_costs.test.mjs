@@ -106,3 +106,23 @@ test('read-only RPC verification fails closed for wrong chain or wrong V2 factor
   await assert.rejects(() => readV2Snapshot(mockMainnetRpc({ wrongChain: true })), /Mainnet/);
   await assert.rejects(() => readV2Snapshot(mockMainnetRpc({ mismatch: true })), /identity/);
 });
+
+test('explicit historical block pins all state reads and retains auditable snapshot', async () => {
+  const base = mockMainnetRpc();
+  const calls = [];
+  const snap = await readV2Snapshot(async (method, params) => {
+    calls.push([method, params]);
+    return base(method, params);
+  }, { blockTag: '0x7b' });
+  assert.deepEqual(calls.find(([m]) => m === 'eth_getBlockByNumber')[1], ['0x7b', false]);
+  assert.ok(calls.filter(([m]) => ['eth_call', 'eth_getCode'].includes(m)).every(([, p]) => p[1] === '0x7b'));
+  const report = analyzeSnapshot(snap);
+  assert.equal(report.snapshot.uni.usdcReserve, 1000000000000n);
+  assert.equal(report.snapshot.ethUsd.answer, 170000000000n);
+  assert.equal(report.snapshot.blockTime, 1800000000n);
+});
+
+test('invalid or mismatched historical blocks fail closed', async () => {
+  await assert.rejects(() => readV2Snapshot(mockMainnetRpc(), { blockTag: '0x7c' }), /different block/);
+  await assert.rejects(() => readV2Snapshot(mockMainnetRpc(), { blockTag: 'private-url' }), /Invalid V2_BLOCK_TAG/);
+});

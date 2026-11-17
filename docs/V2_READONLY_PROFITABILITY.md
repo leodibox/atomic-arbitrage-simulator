@@ -35,3 +35,7 @@ The second command should be run in a trusted private terminal or Codex environm
 ## Acceptance criteria for Codex
 
 Run Node tests with zero failures, run with a functioning mainnet HTTPS RPC, record exact sampled block, fresh feed timestamps, premium and all eight route outputs. Fail on stale feed/incorrect factory. Compare canonical integer outputs with the existing fork test on the **same block**. Make no production changes. Keep this research PR separate from the guarded Aave executor PR #10.
+
+## Validación ejecutada el 2026-11-17
+
+Ver [reservas, oráculos, ocho resultados y comparación con PR #10](V2_MAINNET_COST_RESULTS_20261117.md). Diez tests pasan. El JSON ahora conserva `snapshot` con los datos utilizados. `V2_BLOCK_TAG` acepta `latest` (por defecto), `safe`, `finalized` o un número hexadecimal; cada lectura queda fijada al número devuelto, y un número histórico discrepante se rechaza. En runtimes Node 24 con proxy exportado, usar `NODE_USE_ENV_PROXY=1` manteniendo TLS verificado. No imprimir ni guardar HTTPS_URL con credenciales. El replay exacto del bloque de PR #10 quedó bloqueado por HTTP 403 del RPC; la muestra finalizada actual sí se completó.
