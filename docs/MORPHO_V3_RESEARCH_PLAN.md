@@ -38,7 +38,7 @@ node scripts/research_morpho_v3_readonly.mjs
 
 Supply `HTTPS_URL` securely, not in source, PR comments, logs or chat. Use `V3_BLOCK_TAG=finalized` (default) or a specific block selector when the RPC supports historical state. In some Codex environments outbound traffic may require `NODE_USE_ENV_PROXY=1`; do not disable TLS.
 
-No successful live RPC run is claimed until verified by Codex. Local and GitHub Actions test verification remains pending.
+Local validation now completed: 8 Node tests and 33 independent Mainnet-fork tests pass. See [MORPHO_V3_MAINNET_CERTIFICATION.md](MORPHO_V3_MAINNET_CERTIFICATION.md) for exact results, failed preliminary attempts, gas limits and economic findings. GitHub Actions status was not certified by this local run.
 
 ## Acceptance / next stages
 
