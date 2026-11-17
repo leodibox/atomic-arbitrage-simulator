@@ -239,7 +239,8 @@ where
         let block = observed_block.max(cache.read().await.last_block());
         observed_block = block;
 
-        let (pools, fresh_count, stale_count, cycles, near_misses, last_block, amounts_tried) = {
+        let (pools, fresh_count, stale_count, cycles, near_misses, last_block, amounts_tried,
+            v2_compatible_gross_candidates) = {
             let guard = cache.read().await;
             // Count fresh vs stale pools
             let fresh_count = guard.values()
@@ -368,11 +369,19 @@ where
             // probe amount only within the same ordered route.
             let deduped = best_discovery_per_ordered_route(all_cycles);
 
+            // Structural ABI compatibility is NOT equivalent to executable
+            // profitability; gas/eth_call and wallet controls remain unverified.
+            let v2_compatible_gross_candidates = deduped.iter()
+                .filter(|candidate| candidate.hops.iter()
+                    .all(|hop| guard.get(&hop.pair).is_some_and(|p| p.fee_bps == 30)))
+                .count();
+
             // Sort near-misses, keep top N
             near_miss_list.sort_by(|a, b| b.0.cmp(&a.0));
             near_miss_list.truncate(near_miss_count);
 
-            (guard.len(), fresh_count, stale_count, deduped, near_miss_list, guard.last_block(), amounts_tried)
+            (guard.len(), fresh_count, stale_count, deduped, near_miss_list, guard.last_block(),
+                amounts_tried, v2_compatible_gross_candidates)
         };
 
         info!(
@@ -380,13 +389,15 @@ where
             fresh = fresh_count,
             stale = stale_count,
             cycles = cycles.len(),
+            v2_compatible_gross_candidates,
+            incompatible_gross_candidates = cycles.len() - v2_compatible_gross_candidates,
             near_misses = near_misses.len(),
             block = last_block,
             amounts_tried,
             max_hops = sim_max_hops,
             premium_bps,
             gas_cost_raw,
-            "arbitrage discovery (gross candidates only, not live-trade signals)"
+            "arbitrage discovery (gross candidates only; V2 compatibility counted, not live-trade signals)"
         );
 
         for cycle in cycles.iter().take(5) {
