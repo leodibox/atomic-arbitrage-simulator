@@ -77,3 +77,26 @@ test('future logs cannot appear in a previous pinned inventory',()=>{
  const x=rankLargestSwaps([v2(10,121)],ix);
  assert.equal(x.candidates.length,0);assert.equal(x.selection.rejections[0].reason,'SWAP_AFTER_CHECKPOINT');
 });
+
+test('recent Swap events after old inventory are accepted only under an explicit finalized bound',()=>{
+ const ix=buildPoolIndex(inventory());
+ const within=rankLargestSwaps([v2(10,121)],ix,{maxBlockNumber:121});
+ assert.equal(within.candidates.length,1);
+ const beyond=rankLargestSwaps([v2(10,122)],ix,{maxBlockNumber:121});
+ assert.equal(beyond.candidates.length,0);
+ assert.equal(beyond.selection.rejections[0].reason,'SWAP_AFTER_CHECKPOINT');
+});
+test('receipt with tampered Swap amount fails even with same tx hash/log index',()=>{
+ const ix=buildPoolIndex(inventory()),e=v2();
+ const candidate=rankLargestSwaps([e],ix).candidates[0];
+ const altered={...e,data:'0x'+word(5000n)+word(99999999999999999999n)+word(0n)+word(0n)};
+ const receipt={transactionHash:e.transactionHash,blockHash:e.blockHash,
+   transactionIndex:'0x0',blockNumber:'0x6e',status:'0x1',logs:[altered]};
+ const block={hash:e.blockHash,timestamp:'0x69000000',baseFeePerGas:'0x1'};
+ assert.throws(()=>verifySelectedReceipt(candidate,receipt,block),/RECEIPT_SWAP_DATA_MISMATCH/);
+});
+test('spoofed factory or noncanonical fee cannot enter the pool index',()=>{
+ const base=inventory();
+ base.markets[0].pools=[{...pools[0],factory:addr(909)},{...pools[1],fee:999}];
+ assert.equal(buildPoolIndex(base).pools.size,0);
+});
