@@ -43,6 +43,44 @@ The verifier uses only `eth_chainId`, `eth_getCode`, and `eth_call`. It checks:
 
 Failure exits with status 2. Passing means **read-only contract wiring is consistent**, NOT that real-money trading is safe or enabled. Do not unpause or enable payout based on this report alone.
 
+## Mainnet-fork integration test (no real transaction)
+
+`contracts/test/AaveMainnetFork.t.sol` provides two tests against a local
+**fork** of the real Ethereum state: it reads Aave's actual flash-loan premium,
+and calls `flashLoanSimple` for real USDC in the fork while swapping through
+**synthetic local V2 pairs**, repaying Aave and checking that the immutable
+recipient receives only surplus. The dummy pair price gap is deliberately
+artificial: passing this test would establish Aave callback/repayment compatibility,
+**not** a profitable trade in the real market.
+
+```sh
+cd contracts
+# Optional without RPC: fork tests are explicitly SKIPPED, not verified.
+forge test -vvv
+# With private HTTPS_URL set in your local environment, run the actual fork:
+forge test --match-contract AaveMainnetForkTest -vvv
+```
+
+Check test results for **passed vs skipped**. A skipped fork test is never
+evidence of a working Aave integration. Do not put HTTPS_URL credentials in
+GitHub, a public PR, or a screenshot.
+
+`scripts/check_aave_wiring.mjs` selector identifiers were independently
+recomputed using Ethereum Keccak-256 and matched all six getters, but neither
+the live executor's chain-code hash nor wallet ownership is verified until the
+read-only check runs against the actual deployed address.
+
+## GitHub Actions runner limitation
+
+GitHub Actions for this repository has failed before starting a usable Foundry
+job, and there is currently no trusted `forge`/Solidity compiler available in
+this chat runtime. The workflow also includes the dependency-free Node verifier
+tests. The PR therefore remains in **draft** with no production deployment.
+The repository owner should check **GitHub Settings → Billing and licensing**
+and **Settings → Actions → General**, or use an already configured trusted
+Foundry development computer to produce the real test/compile results. Do not
+merge based only on source inspection.
+
 ## Solidity and Aave execution gates
 
 - Install a working Foundry toolchain and forge-std (the current GitHub Actions Foundry job failed without usable logs); run `cd contracts && forge build && forge test -vvv`, then Ethereum-mainnet **fork** and fuzz/invariant tests.
