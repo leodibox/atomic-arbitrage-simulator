@@ -145,34 +145,8 @@ contract FlashLoanArbGuarded {
             }
             seen[i] = pairAddress;
 
-            IGuardedV2Pair pair = IGuardedV2Pair(pairAddress);
-            address token0 = pair.token0();
-            address token1 = pair.token1();
-            bool zeroForOne = direction == 1;
-            if (zeroForOne ? currentToken != token0 : currentToken != token1)
-                revert BadPath();
-            address outputToken = zeroForOne ? token1 : token0;
-            if (token0 == token1 || outputToken == address(0)) revert BadPath();
-
-            (uint112 r0, uint112 r1,) = pair.getReserves();
-            (uint256 rIn, uint256 rOut) =
-                zeroForOne ? (uint256(r0), uint256(r1)) : (uint256(r1), uint256(r0));
-            if (rIn == 0 || rOut == 0 || currentAmount == 0) revert BadPath();
-
-            // Canonical V2 fee only; approvedPair configuration must exclude
-            // forks with custom pair fees or incompatible swap behavior.
-            uint256 feeAmount = currentAmount * 997;
-            uint256 output = (feeAmount * rOut) / (rIn * 1000 + feeAmount);
-            if (output == 0 || output >= rOut) revert Unprofitable();
-
-            uint256 beforeOut = IGuardedToken(outputToken).balanceOf(address(this));
-            _safeTransfer(currentToken, pairAddress, currentAmount);
-            pair.swap(zeroForOne ? 0 : output, zeroForOne ? output : 0, address(this), "");
-            uint256 afterOut = IGuardedToken(outputToken).balanceOf(address(this));
-            if (afterOut < beforeOut + output) revert TransferFailed();
-
-            currentToken = outputToken;
-            currentAmount = afterOut - beforeOut;
+            (currentToken, currentAmount) =
+                _executeV2Hop(pairAddress, direction == 1, currentToken, currentAmount);
         }
         if (currentToken != asset) revert BadPath();
 
@@ -184,6 +158,43 @@ contract FlashLoanArbGuarded {
         _safeApprove(asset, address(pool), owed);
         emit FlashLoanExecuted(asset, amount, premium, finalBalance - priorBalance - owed);
         return true;
+    }
+
+    function _executeV2Hop(
+        address pairAddress,
+        bool zeroForOne,
+        address currentToken,
+        uint256 inputAmount
+    ) private returns (address outputToken, uint256 received) {
+        IGuardedV2Pair pair = IGuardedV2Pair(pairAddress);
+        address token0 = pair.token0();
+        address token1 = pair.token1();
+        if (zeroForOne ? currentToken != token0 : currentToken != token1)
+            revert BadPath();
+        outputToken = zeroForOne ? token1 : token0;
+        if (token0 == token1 || outputToken == address(0)) revert BadPath();
+
+        uint256 output = _quoteV2(pair, zeroForOne, inputAmount);
+        uint256 beforeOut = IGuardedToken(outputToken).balanceOf(address(this));
+        _safeTransfer(currentToken, pairAddress, inputAmount);
+        pair.swap(zeroForOne ? 0 : output, zeroForOne ? output : 0, address(this), "");
+        uint256 afterOut = IGuardedToken(outputToken).balanceOf(address(this));
+        if (afterOut < beforeOut + output) revert TransferFailed();
+        received = afterOut - beforeOut;
+    }
+
+    function _quoteV2(IGuardedV2Pair pair, bool zeroForOne, uint256 amount)
+        private view returns (uint256 output)
+    {
+        (uint112 r0, uint112 r1,) = pair.getReserves();
+        (uint256 rIn, uint256 rOut) =
+            zeroForOne ? (uint256(r0), uint256(r1)) : (uint256(r1), uint256(r0));
+        if (rIn == 0 || rOut == 0 || amount == 0) revert BadPath();
+        // Applies canonical V2 30 bps fee; approved pair config MUST exclude
+        // fee-customized forks or any nonstandard/malicious AMM implementation.
+        uint256 feeAmount = amount * 997;
+        output = (feeAmount * rOut) / (rIn * 1000 + feeAmount);
+        if (output == 0 || output >= rOut) revert Unprofitable();
     }
 
     function sweep(address token, uint256 amount) external onlyOwner {
