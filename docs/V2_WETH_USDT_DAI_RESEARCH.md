@@ -39,3 +39,7 @@ This is **not a verified opportunity or live transaction**. The default gas unit
 3. Publish all results, including unavailable pairs and losing routes. Report value in WETH (wei/1e18), not mislabeled USDC.
 4. Compare findings to PR #11 as a separate market; keep both PRs in DRAFT.
 5. Do not merge or deploy from a positive discovery. Require execution-level review and real post-gas conditions first.
+
+## Resultados observados
+
+Ver [informe de Mainnet del bloque 26436921](V2_WETH_USDT_DAI_RESULTS_20261117.md) y [snapshot JSON reproducible](research/v2-weth-pairs-mainnet-26436921.json). Diez tests pasaron; los cuatro pares se verificaron mediante sus factories. Veinte márgenes negativos después del coste hipotético, ninguno autorizado para ejecución. No se modificó código para producir estos resultados.

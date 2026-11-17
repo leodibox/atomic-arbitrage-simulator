@@ -1,0 +1,345 @@
+{
+  "snapshot": {
+    "chainId": 1,
+    "blockNumber": "26436921",
+    "blockHash": "0xfc593213a2c1067d3f125f96e77cf8797e505d2d2bb2875e557233756e9ba908",
+    "blockTime": "1794944471",
+    "baseFeeWei": "129103107",
+    "premiumBps": "5",
+    "markets": [
+      {
+        "token": "USDT",
+        "other": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+        "decimals": 6,
+        "missing": false,
+        "uni": {
+          "address": "0x0d4a11d5eeaac28ec3f61d100daf4d40471f1852",
+          "factory": "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f",
+          "token0": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+          "token1": "0xdac17f958d2ee523a2206206994597c13d831ec7",
+          "wethReserve": "3462040471724921196218",
+          "otherReserve": "6201177182740"
+        },
+        "sushi": {
+          "address": "0x06da0fd433c1a5d7a4faa01111c044910a184553",
+          "factory": "0xC0AEe478e3658e2610c5F7A4A2E1777cE9e4f2Ac",
+          "token0": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+          "token1": "0xdac17f958d2ee523a2206206994597c13d831ec7",
+          "wethReserve": "148463314799802432900",
+          "otherReserve": "265933477058"
+        }
+      },
+      {
+        "token": "DAI",
+        "other": "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+        "decimals": 18,
+        "missing": false,
+        "uni": {
+          "address": "0xa478c2975ab1ea89e8196811f51a7b7ade33eb11",
+          "factory": "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f",
+          "token0": "0x6b175474e89094c44da98b954eedeac495271d0f",
+          "token1": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+          "wethReserve": "1830476142977840810469",
+          "otherReserve": "3275930395735257836625984"
+        },
+        "sushi": {
+          "address": "0xc3d03e4f041fd4cd388c549ee2a29a9e5075882f",
+          "factory": "0xC0AEe478e3658e2610c5F7A4A2E1777cE9e4f2Ac",
+          "token0": "0x6b175474e89094c44da98b954eedeac495271d0f",
+          "token1": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+          "wethReserve": "47211827528598825248",
+          "otherReserve": "84514714913344691610065"
+        }
+      }
+    ]
+  },
+  "blockNumber": "26436921",
+  "blockHash": "0xfc593213a2c1067d3f125f96e77cf8797e505d2d2bb2875e557233756e9ba908",
+  "premiumBps": "5",
+  "markets": [
+    {
+      "token": "USDT",
+      "status": "SAMPLED_READ_ONLY",
+      "uni": {
+        "address": "0x0d4a11d5eeaac28ec3f61d100daf4d40471f1852",
+        "factory": "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f",
+        "token0": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+        "token1": "0xdac17f958d2ee523a2206206994597c13d831ec7",
+        "wethReserve": "3462040471724921196218",
+        "otherReserve": "6201177182740"
+      },
+      "sushi": {
+        "address": "0x06da0fd433c1a5d7a4faa01111c044910a184553",
+        "factory": "0xC0AEe478e3658e2610c5F7A4A2E1777cE9e4f2Ac",
+        "token0": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+        "token1": "0xdac17f958d2ee523a2206206994597c13d831ec7",
+        "wethReserve": "148463314799802432900",
+        "otherReserve": "265933477058"
+      },
+      "shallowWethReserve": "148463314799802432900",
+      "hypotheticalGasWei": "541969491360000",
+      "gasEstimateVerified": false,
+      "executableCalldataVerified": false,
+      "transactionSubmissionEnabled": false,
+      "approvedForExecution": false,
+      "routes": [
+        {
+          "route": "Uniswap V2 → Sushi V2",
+          "amountWei": "10000000000000000",
+          "intermediateTokenRaw": "17858127",
+          "outputWei": "9939124505571475",
+          "premiumWei": "5000000000000",
+          "marginBeforeGasWei": "-65875494428525",
+          "estimatedPostGasWei": "-607844985788525",
+          "theoreticalPositive": false,
+          "approvedForExecution": false
+        },
+        {
+          "route": "Uniswap V2 → Sushi V2",
+          "amountWei": "50000000000000000",
+          "intermediateTokenRaw": "89289606",
+          "outputWei": "49681745909214464",
+          "premiumWei": "25000000000000",
+          "marginBeforeGasWei": "-343254090785536",
+          "estimatedPostGasWei": "-885223582145536",
+          "theoreticalPositive": false,
+          "approvedForExecution": false
+        },
+        {
+          "route": "Uniswap V2 → Sushi V2",
+          "amountWei": "100000000000000000",
+          "intermediateTokenRaw": "178576641",
+          "outputWei": "99328822856663529",
+          "premiumWei": "50000000000000",
+          "marginBeforeGasWei": "-721177143336471",
+          "estimatedPostGasWei": "-1263146634696471",
+          "theoreticalPositive": false,
+          "approvedForExecution": false
+        },
+        {
+          "route": "Uniswap V2 → Sushi V2",
+          "amountWei": "500000000000000000",
+          "intermediateTokenRaw": "892780370",
+          "outputWei": "495261693780089881",
+          "premiumWei": "250000000000000",
+          "marginBeforeGasWei": "-4988306219910119",
+          "estimatedPostGasWei": "-5530275711270119",
+          "theoreticalPositive": false,
+          "approvedForExecution": false
+        },
+        {
+          "route": "Uniswap V2 → Sushi V2",
+          "amountWei": "1000000000000000000",
+          "intermediateTokenRaw": "1785303711",
+          "outputWei": "987088901795522831",
+          "premiumWei": "500000000000000",
+          "marginBeforeGasWei": "-13411098204477169",
+          "estimatedPostGasWei": "-13953067695837169",
+          "theoreticalPositive": false,
+          "approvedForExecution": false
+        },
+        {
+          "route": "Sushi V2 → Uniswap V2",
+          "amountWei": "10000000000000000",
+          "intermediateTokenRaw": "17857466",
+          "outputWei": "9939664909306335",
+          "premiumWei": "5000000000000",
+          "marginBeforeGasWei": "-65335090693665",
+          "estimatedPostGasWei": "-607304582053665",
+          "theoreticalPositive": false,
+          "approvedForExecution": false
+        },
+        {
+          "route": "Sushi V2 → Uniswap V2",
+          "amountWei": "50000000000000000",
+          "intermediateTokenRaw": "89263358",
+          "outputWei": "49684411071034852",
+          "premiumWei": "25000000000000",
+          "marginBeforeGasWei": "-340588928965148",
+          "estimatedPostGasWei": "-882558420325148",
+          "theoreticalPositive": false,
+          "approvedForExecution": false
+        },
+        {
+          "route": "Sushi V2 → Uniswap V2",
+          "amountWei": "100000000000000000",
+          "intermediateTokenRaw": "178466812",
+          "outputWei": "99334054684270446",
+          "premiumWei": "50000000000000",
+          "marginBeforeGasWei": "-715945315729554",
+          "estimatedPostGasWei": "-1257914807089554",
+          "theoreticalPositive": false,
+          "approvedForExecution": false
+        },
+        {
+          "route": "Sushi V2 → Uniswap V2",
+          "amountWei": "500000000000000000",
+          "intermediateTokenRaw": "889945107",
+          "outputWei": "495283936648766501",
+          "premiumWei": "250000000000000",
+          "marginBeforeGasWei": "-4966063351233499",
+          "estimatedPostGasWei": "-5508032842593499",
+          "theoreticalPositive": false,
+          "approvedForExecution": false
+        },
+        {
+          "route": "Sushi V2 → Uniswap V2",
+          "amountWei": "1000000000000000000",
+          "intermediateTokenRaw": "1773953687",
+          "outputWei": "987123722184253222",
+          "premiumWei": "500000000000000",
+          "marginBeforeGasWei": "-13376277815746778",
+          "estimatedPostGasWei": "-13918247307106778",
+          "theoreticalPositive": false,
+          "approvedForExecution": false
+        }
+      ]
+    },
+    {
+      "token": "DAI",
+      "status": "SAMPLED_READ_ONLY",
+      "uni": {
+        "address": "0xa478c2975ab1ea89e8196811f51a7b7ade33eb11",
+        "factory": "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f",
+        "token0": "0x6b175474e89094c44da98b954eedeac495271d0f",
+        "token1": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+        "wethReserve": "1830476142977840810469",
+        "otherReserve": "3275930395735257836625984"
+      },
+      "sushi": {
+        "address": "0xc3d03e4f041fd4cd388c549ee2a29a9e5075882f",
+        "factory": "0xC0AEe478e3658e2610c5F7A4A2E1777cE9e4f2Ac",
+        "token0": "0x6b175474e89094c44da98b954eedeac495271d0f",
+        "token1": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+        "wethReserve": "47211827528598825248",
+        "otherReserve": "84514714913344691610065"
+      },
+      "shallowWethReserve": "47211827528598825248",
+      "hypotheticalGasWei": "541969491360000",
+      "gasEstimateVerified": false,
+      "executableCalldataVerified": false,
+      "transactionSubmissionEnabled": false,
+      "approvedForExecution": false,
+      "routes": [
+        {
+          "route": "Uniswap V2 → Sushi V2",
+          "amountWei": "10000000000000000",
+          "intermediateTokenRaw": "17842815530759452946",
+          "outputWei": "9935406050234703",
+          "premiumWei": "5000000000000",
+          "marginBeforeGasWei": "-69593949765297",
+          "estimatedPostGasWei": "-611563441125297",
+          "theoreticalPositive": false,
+          "approvedForExecution": false
+        },
+        {
+          "route": "Uniswap V2 → Sushi V2",
+          "amountWei": "50000000000000000",
+          "intermediateTokenRaw": "89212134028068658920",
+          "outputWei": "49634168436351646",
+          "premiumWei": "25000000000000",
+          "marginBeforeGasWei": "-390831563648354",
+          "estimatedPostGasWei": "-932801055008354",
+          "theoreticalPositive": false,
+          "approvedForExecution": false
+        },
+        {
+          "route": "Uniswap V2 → Sushi V2",
+          "amountWei": "100000000000000000",
+          "intermediateTokenRaw": "178419409229994321418",
+          "outputWei": "99161390132935756",
+          "premiumWei": "50000000000000",
+          "marginBeforeGasWei": "-888609867064244",
+          "estimatedPostGasWei": "-1430579358424244",
+          "theoreticalPositive": false,
+          "approvedForExecution": false
+        },
+        {
+          "route": "Uniswap V2 → Sushi V2",
+          "amountWei": "500000000000000000",
+          "intermediateTokenRaw": "891902740727245491096",
+          "outputWei": "491570205494910975",
+          "premiumWei": "250000000000000",
+          "marginBeforeGasWei": "-8679794505089025",
+          "estimatedPostGasWei": "-9221763996449025",
+          "theoreticalPositive": false,
+          "approvedForExecution": false
+        },
+        {
+          "route": "Uniswap V2 → Sushi V2",
+          "amountWei": "1000000000000000000",
+          "intermediateTokenRaw": "1783319955889502764067",
+          "outputWei": "972750041227365842",
+          "premiumWei": "500000000000000",
+          "marginBeforeGasWei": "-27749958772634158",
+          "estimatedPostGasWei": "-28291928263994158",
+          "theoreticalPositive": false,
+          "approvedForExecution": false
+        },
+        {
+          "route": "Sushi V2 → Uniswap V2",
+          "amountWei": "10000000000000000",
+          "intermediateTokenRaw": "17843702522669486377",
+          "outputWei": "9940476010861212",
+          "premiumWei": "5000000000000",
+          "marginBeforeGasWei": "-64523989138788",
+          "estimatedPostGasWei": "-606493480498788",
+          "theoreticalPositive": false,
+          "approvedForExecution": false
+        },
+        {
+          "route": "Sushi V2 → Uniswap V2",
+          "amountWei": "50000000000000000",
+          "intermediateTokenRaw": "89143228906355286505",
+          "outputWei": "49659362987639425",
+          "premiumWei": "25000000000000",
+          "marginBeforeGasWei": "-365637012360575",
+          "estimatedPostGasWei": "-907606503720575",
+          "theoreticalPositive": false,
+          "approvedForExecution": false
+        },
+        {
+          "route": "Sushi V2 → Uniswap V2",
+          "amountWei": "100000000000000000",
+          "intermediateTokenRaw": "178098605498777329857",
+          "outputWei": "99211392506517405",
+          "premiumWei": "50000000000000",
+          "marginBeforeGasWei": "-838607493482595",
+          "estimatedPostGasWei": "-1380576984842595",
+          "theoreticalPositive": false,
+          "approvedForExecution": false
+        },
+        {
+          "route": "Sushi V2 → Uniswap V2",
+          "amountWei": "500000000000000000",
+          "intermediateTokenRaw": "883049594640660299914",
+          "outputWei": "491805024045318932",
+          "premiumWei": "250000000000000",
+          "marginBeforeGasWei": "-8444975954681068",
+          "estimatedPostGasWei": "-8986945446041068",
+          "theoreticalPositive": false,
+          "approvedForExecution": false
+        },
+        {
+          "route": "Sushi V2 → Uniswap V2",
+          "amountWei": "1000000000000000000",
+          "intermediateTokenRaw": "1747836964477482337153",
+          "outputWei": "973183033882941453",
+          "premiumWei": "500000000000000",
+          "marginBeforeGasWei": "-27316966117058547",
+          "estimatedPostGasWei": "-27858935608418547",
+          "theoreticalPositive": false,
+          "approvedForExecution": false
+        }
+      ]
+    }
+  ],
+  "assumptions": {
+    "gasUnits": "400000",
+    "priorityFeeWei": "1000000000",
+    "gasBufferBps": "2000",
+    "gasEstimateVerified": false,
+    "executableCalldataVerified": false,
+    "transactionSubmissionEnabled": false
+  }
+}
