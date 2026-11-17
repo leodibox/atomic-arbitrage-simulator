@@ -36,6 +36,8 @@ contract FlashLoanArbGuarded {
     mapping(address => uint256) public maxLoanRaw;
     mapping(address => bool) public approvedPair;
     bool private inFlight;
+    address private inFlightAsset;
+    uint256 private inFlightAmount;
 
     error NotOwner();
     error NotPool();
@@ -116,6 +118,8 @@ contract FlashLoanArbGuarded {
         // returns successfully, never before its repayment.
         uint256 originalBalance = IGuardedToken(asset).balanceOf(address(this));
         inFlight = true;
+        inFlightAsset = asset;
+        inFlightAmount = amount;
         pool.flashLoanSimple(address(this), asset, amount, abi.encode(path, minProfit), 0);
         uint256 settledBalance = IGuardedToken(asset).balanceOf(address(this));
         if (settledBalance <= originalBalance) revert Unprofitable();
@@ -126,6 +130,8 @@ contract FlashLoanArbGuarded {
             emit ProfitPaid(asset, profitRecipient, realizedProfit);
         }
         inFlight = false;
+        inFlightAsset = address(0);
+        inFlightAmount = 0;
     }
 
     /// @notice Only Aave may invoke during an active owner-initiated loan.
@@ -137,7 +143,8 @@ contract FlashLoanArbGuarded {
         bytes calldata params
     ) external returns (bool) {
         if (msg.sender != address(pool)) revert NotPool();
-        if (!inFlight || initiator != address(this)) revert Reentrant();
+        if (!inFlight || initiator != address(this)
+            || asset != inFlightAsset || amount != inFlightAmount) revert Reentrant();
         if (paused) revert Paused();
         if (maxLoanRaw[asset] == 0 || amount == 0 || amount > maxLoanRaw[asset])
             revert LoanCapExceeded();
