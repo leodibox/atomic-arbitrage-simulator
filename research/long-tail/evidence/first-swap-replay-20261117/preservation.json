@@ -1,0 +1,23 @@
+{
+  "sampleSha256": "3df6464a1d7c9e34a24508feaa58faae9bba655091bef00c70bfb0af289bde2f",
+  "totalLogs": 166,
+  "confirmedCandidates": 8,
+  "receiptFailures": 0,
+  "rpcCalls": 20,
+  "nodeTests": {
+    "passed": 35,
+    "failed": 0,
+    "skipped": 0
+  },
+  "secretReview": {
+    "files": [
+      "src/swap_trigger_candidates.mjs",
+      "test/swap_trigger_candidates.test.mjs",
+      "evidence/recent-swap-sample.json",
+      "RECENT_SWAP_TRIGGER_PILOT_RESULTS_20261117.md"
+    ],
+    "potentialCredentialMatches": 0,
+    "manualReview": "Only public addresses/hashes, canonical event signatures and non-secret metadata; no private RPC URLs or credential assignments found."
+  },
+  "originalSampleOverwritten": false
+}

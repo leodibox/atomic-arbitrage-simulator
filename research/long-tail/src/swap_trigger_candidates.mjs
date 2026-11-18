@@ -1,8 +1,8 @@
 // Pure read-only selection logic for bounded Ethereum Swap-trigger research.
 // This module NEVER claims a post-tx opportunity, trade signal or net EV.
 export const TOPICS=Object.freeze({
-  v2:'0xd78ad95fa46c994b6551d0da85fc275fe613d174a36d44dcaf13e0f521b7',
-  v3:'0xc42079f94a6350d7e6235f2917495a9d78ff82dd33fbb8f9195e7590c9de8d3'
+  v2:'0xd78ad95fa46c994b6551d0da85fc275fe613ce37657fb8d5e3d130840159d822',
+  v3:'0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67'
 });
 const WETH='0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2';
 const FACTORY={v2:'0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f',v3:'0x1f98431c8ad98523631ae4a59f267346ea31f984'};

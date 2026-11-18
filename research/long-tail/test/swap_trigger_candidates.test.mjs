@@ -100,3 +100,9 @@ test('spoofed factory or noncanonical fee cannot enter the pool index',()=>{
  base.markets[0].pools=[{...pools[0],factory:addr(909)},{...pools[1],fee:999}];
  assert.equal(buildPoolIndex(base).pools.size,0);
 });
+
+test('Swap topics match independent Ethereum Keccak-256 of canonical event signatures',async()=>{
+ const {id}=await import('ethers');
+ assert.equal(TOPICS.v2,id('Swap(address,uint256,uint256,uint256,uint256,address)'));
+ assert.equal(TOPICS.v3,id('Swap(address,address,int256,int256,uint160,uint128,int24)'));
+});
