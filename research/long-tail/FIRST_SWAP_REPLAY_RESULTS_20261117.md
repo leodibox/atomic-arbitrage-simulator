@@ -75,3 +75,7 @@ No se ejecuta la fase económica con estado de fin de bloque. Los tests unitario
 Obtener, sin contratar automáticamente nada, un endpoint que admita debug_traceCall con semántica transaccional comprobable, o acceso a estado padre/cuerpos canónicos para reconstrucción local con Anvil y un presupuesto explícito de datos/CPU. Mantener exactamente el mismo candidato, bloque/hash y orden. Solo después de verificar esa frontera pueden cotizarse rutas distintas y medirse settlement/gas con financiación real del fork. Un eth_call histórico a fin de bloque no resuelve este requisito.
 
 No hay firmas, bundles, contratos desplegados, producción modificada, fondos reales ni trading habilitado. No se creó otro PR. Se actualiza exclusivamente el PR #16 DRAFT con investigación y el bloqueo explícito, conservando la evidencia anterior.
+
+## Revalidación posterior de la misma solicitud
+
+Sobre HEAD `ff5005f`, se repitió `npm test`: **39 PASS, 0 FAIL, 0 SKIP**. Se revisaron 14 archivos relevantes sin coincidencias de credenciales/URLs privadas; el sample conserva conteos 166/8/0/20 y SHA256 original. No hay HTTPS_URL ni bindings runtime/secret nuevos. No se reintentaron las mismas consultas de acceso sin cambio de requisito: **0 nuevas RPC**. El bloqueo previo sigue siendo la única evidencia de replay; no se declara que el proveedor haya sido consultado de nuevo. No hubo estado post-transacción ni fase económica nueva. [Registro de revalidación](evidence/first-swap-replay-20261117/recheck-ff5005f.json).
