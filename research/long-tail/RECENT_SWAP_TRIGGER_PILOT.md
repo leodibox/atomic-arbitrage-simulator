@@ -4,7 +4,7 @@
 
 This stage adds actual research code for **recent finalized Swap event selection** on the five existing canonical Uniswap USDC/WETH pools. It is the candidate-finding precursor to the preregistered **transaction-position replay**, not the replay itself.
 
-**Status 2026-11-17:** pure JavaScript committed assertions **11/11 passed** when run in a restricted V8 environment against the exact GitHub source; **official Node `node --test` and a live RPC run have NOT been executed**. Do not claim new Swap transactions, a profitable trade, a positive EV, or improved long-tail coverage yet.
+**Executed status 2026-11-17:** official Node tests and the live bounded pilot have now run. Intra-Uniswap tests passed 9/9; Swap selection tests passed 12/12 after correcting both canonical event topics. The preserved pilot contains 166 logs, eight receipt-confirmed candidates, zero receipt failures and 20 RPC calls. The full suite with replay-selection checks passed 39/39. [Pilot results](RECENT_SWAP_TRIGGER_PILOT_RESULTS_20261117.md) and [first-transaction replay outcome](FIRST_SWAP_REPLAY_RESULTS_20261117.md) preserve evidence: replay is INSUFFICIENT_REPLAY_ACCESS, not a verified opportunity.
 
 Existing PR #16 report remains unchanged: no verified positive-net trade, no sender, and prior public archive RPC returned HTTP 403 for older logs and state. No secrets, signing, or funds are involved.
 

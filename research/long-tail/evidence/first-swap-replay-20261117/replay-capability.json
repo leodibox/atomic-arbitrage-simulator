@@ -1,0 +1,133 @@
+{
+  "status": "INSUFFICIENT_REPLAY_ACCESS",
+  "selected": {
+    "poolAddress": "0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640",
+    "kind": "v3",
+    "feePpm": 500,
+    "blockNumber": 26437505,
+    "blockHash": "0x91b88c8e8ab2160eef6abd2b9de92c9c543f4a5405cec310dd362c2b53abe493",
+    "txHash": "0xde4d559fa47f4534a3f44880a89c6609a6378325b776d67768383c314bb681fe",
+    "txIndex": 48,
+    "logIndex": 146,
+    "wethVolumeWei": "43567528875890171904",
+    "direction": "WETH_IN",
+    "triggeringPoolToken0": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+    "triggeringPoolToken1": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+    "candidateState": "SWAP_EVENT_ONLY_NOT_REPLAYED",
+    "tradeExecutionAllowed": false,
+    "bluechipDepthIndependentlyVerified": false,
+    "usdNotionalVerified": false,
+    "receiptVerified": true,
+    "postTransactionStateVerified": false,
+    "coldGasVerified": false,
+    "netProfitVerified": false,
+    "builderPaymentVerified": false,
+    "pSuccessCalibrated": false,
+    "historicalBaseFeeWei": "185561570",
+    "blockTimestamp": 1794951491,
+    "triggerTransactionCompleted": true,
+    "afterTriggerPosition": "AFTER_FULL_TX_48",
+    "replayStatus": "NOT_REPLAYED",
+    "selectionRule": "descending verified single Swap WETH leg, then block/transaction/log index ascending",
+    "profitabilityInferred": false
+  },
+  "source": "temporary public PublicNode HTTPS",
+  "sampleSha256Before": "3df6464a1d7c9e34a24508feaa58faae9bba655091bef00c70bfb0af289bde2f",
+  "requestBudget": 6,
+  "requests": [
+    {
+      "method": "eth_chainId",
+      "params": [],
+      "httpStatus": 200
+    },
+    {
+      "method": "eth_getTransactionReceipt",
+      "params": [
+        "0xde4d559fa47f4534a3f44880a89c6609a6378325b776d67768383c314bb681fe"
+      ],
+      "httpStatus": 200
+    },
+    {
+      "method": "eth_getBlockByNumber",
+      "params": [
+        "0x1936781",
+        false
+      ],
+      "httpStatus": 200
+    },
+    {
+      "method": "debug_traceCall",
+      "params": [
+        {
+          "to": "0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640",
+          "data": "0x3850c7bd",
+          "gas": "0x186a0"
+        },
+        "0x91b88c8e8ab2160eef6abd2b9de92c9c543f4a5405cec310dd362c2b53abe493",
+        {
+          "tracer": "callTracer",
+          "timeout": "5s",
+          "reexec": 64,
+          "txIndex": "0x31"
+        }
+      ],
+      "httpStatus": 200,
+      "rpcError": {
+        "code": -32601,
+        "message": "the method debug_traceCall does not exist/is not available"
+      }
+    },
+    {
+      "method": "eth_getStorageAt",
+      "params": [
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        "0x0",
+        "0x1936780"
+      ],
+      "httpStatus": 403,
+      "rpcError": {
+        "code": -32602,
+        "message": "Archive requests require a personal token. Get one at: [REDACTED_URL]"
+      }
+    }
+  ],
+  "postTransactionStateVerified": false,
+  "endOfBlockStateUsed": false,
+  "opportunityEvaluation": "NOT_RUN_REPLAY_REQUIRED",
+  "netProfitVerified": false,
+  "tradeExecutionAllowed": false,
+  "receiptAndCanonicalPositionReverified": true,
+  "historicalBaseFeeWei": "185561570",
+  "plan": {
+    "method": "debug_traceCall",
+    "params": [
+      {
+        "to": "0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640",
+        "data": "0x3850c7bd",
+        "gas": "0x186a0"
+      },
+      "0x91b88c8e8ab2160eef6abd2b9de92c9c543f4a5405cec310dd362c2b53abe493",
+      {
+        "tracer": "callTracer",
+        "timeout": "5s",
+        "reexec": 64,
+        "txIndex": "0x31"
+      }
+    ],
+    "triggerTransactionIndex": 48,
+    "requestedPreTransactionIndex": 49,
+    "boundary": "AFTER_COMPLETE_TRIGGER_BEFORE_NEXT_TRANSACTION",
+    "endOfBlockSubstitute": false,
+    "semanticsSource": "Geth eth/tracers/api.go -> eth/state_accessor.go StateAtTransaction returns before target index",
+    "poolStateVerified": false
+  },
+  "traceFailure": "RPC_debug_traceCall_HTTP_200_CODE_-32601",
+  "anvilParentStatePrerequisite": {
+    "status": "BLOCKED",
+    "error": "RPC_eth_getStorageAt_HTTP_403_CODE_-32602"
+  },
+  "anvilStarted": false,
+  "rpcCalls": 5,
+  "sampleSha256After": "3df6464a1d7c9e34a24508feaa58faae9bba655091bef00c70bfb0af289bde2f",
+  "originalSampleUnchanged": true
+}
