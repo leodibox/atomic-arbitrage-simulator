@@ -29,28 +29,28 @@ export async function compare(fetcher=fetch,endpoint=process.env.BASE_RPC_URL||"
  const url=new URL(endpoint);
  if(url.protocol!=="https:"||url.username||url.password||url.search||url.hash)throw Error("Use HTTPS RPC without URL query credentials");
  let requests=0;
- async function rpc(method,params){
+ async function rpc(method,params,stage="rpc"){
   if(++requests>18)throw Error("RPC budget exhausted");
   const res=await fetcher(endpoint,{method:"POST",
     headers:{"content-type":"application/json"},
     body:JSON.stringify({jsonrpc:"2.0",id:requests,method,params}),
     signal:AbortSignal.timeout(8000)});
-  if(!res.ok)throw Error(method+" HTTP "+res.status);
+  if(!res.ok)throw Error(stage+" HTTP "+res.status);
   const payload=await res.json();
-  if(payload.error||typeof payload.result!=="string")throw Error(method+" RPC refused");
+  if(payload.error||typeof payload.result!=="string")throw Error(stage+" RPC refused"+(Number.isInteger(payload.error?.code)?" code="+payload.error.code:"")+(typeof payload.error?.message==="string"?" message="+payload.error.message.slice(0,180).replace(/https?:\\/\\/\\S+/g,"[endpoint]"):""));
   return payload.result;
  }
- if((await rpc("eth_chainId",[])).toLowerCase()!=="0x2105")throw Error("Wrong chain");
- const block=await rpc("eth_blockNumber",[]);
+ if((await rpc("eth_chainId",[],"chainId")).toLowerCase()!=="0x2105")throw Error("Wrong chain");
+ const block=await rpc("eth_blockNumber",[],"blockNumber");
  if(!/^0x[0-9a-f]+$/i.test(block))throw Error("Invalid block");
  for(const [label,v] of Object.entries(VENUES)){
-  const returned=values(await rpc("eth_call",[{to:v.factory,data:factoryData(v)},block]),1)[0];
+  const returned=values(await rpc("eth_call",[{to:v.factory,data:factoryData(v)},block],label+" factory.getPool"),1)[0];
   if(returned!==BigInt(v.pool))throw Error(label+" canonical factory pool mismatch");
  }
  async function quote(label,tokenIn,tokenOut,amountIn){
   const v=VENUES[label];
   const result=values(await rpc("eth_call",[{to:v.quoter,
-    data:quoteData(v,tokenIn,tokenOut,amountIn)},block]),4);
+    data:quoteData(v,tokenIn,tokenOut,amountIn)},block],label+" quoter.quoteExactInputSingle"),4);
   if(result[0]===0n)throw Error(label+" zero amount out");
   return result[0];
  }
