@@ -1,0 +1,41 @@
+
+> test
+> node --test test/*.test.mjs
+
+✔ integer V2 fees and marginal-negative static curve are not profitable at any sampled size (2.663538ms)
+✔ static-V2 sizing agrees with brute force within integer rounding tolerance (8.924483ms)
+✔ no break-even is fabricated if gas exceeds maximum gross curve (0.281557ms)
+✔ gas scenarios and reversion EV use WETH/ETH units and no execution flags (0.632286ms)
+✔ integer sqrt floor and invalid reserves (0.714509ms)
+✔ RPC denies transaction and bundle methods before any network request (1.075915ms)
+✔ event scanning records partial RPC coverage instead of inventing pools (0.91303ms)
+✔ real event ABI decodes pair and rejects other emitter (9.501939ms)
+✔ stratified resource cap preserves endpoints and never fabricates tokens (1.633939ms)
+✔ historical counterpart lookup checks all fee tiers including missing venues (1.243873ms)
+✔ weak positive gross margin has no attainable EV break-even probability (0.317529ms)
+✔ V3 reference quote carries tick crossings and exact pinned block (0.930034ms)
+✔ invalid event emitter is excluded rather than accepted as a discovered pool (1.27663ms)
+✔ factory-discovered spoofed pool identity never enters verified pool inventory (0.912692ms)
+✔ finds exact denial boundary; refuses incomplete coverage accounting (4.080424ms)
+✔ one-block 403: cannot claim shrinking ranges will fix historical access (1.819695ms)
+✔ old one block and ten work but old full window fails: range restriction (0.539166ms)
+✔ old 10 block fails even when one block succeeds (0.55451ms)
+✔ full old window recovered: marked possibly transient, not coverage repaired (1.286837ms)
+✔ recent check failed makes diagnostic inconclusive (0.498616ms)
+✔ fail closed on wrong chain, block hash or factory address (1.136026ms)
+✔ one/ten/full old queries keep identical oldest block, isolating range from age (1.048356ms)
+✔ generic JSON-RPC invalid-params error is not labeled authorization denial (1.562603ms)
+✔ historical state probes are independent, pinned and exactly two even after one failure (9.85823ms)
+ℹ tests 24
+ℹ suites 0
+ℹ pass 24
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 522.82349
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.2
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.2
+npm notice To update run: npm install -g npm@12.2.2
+npm notice

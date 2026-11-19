@@ -1,0 +1,144 @@
+{
+  "source": "temporary public PublicNode HTTPS",
+  "checkpointSha256Before": "a8ba86237df096e632721b2b8eb25265bc4bb133fea6b55ba0f5501519708885",
+  "requestCaps": {
+    "logDiagnostic": 6,
+    "separateStateDiagnostic": 2,
+    "total": 8
+  },
+  "requests": [
+    {
+      "method": "eth_chainId",
+      "params": [],
+      "httpStatus": 200,
+      "quotaHeaders": {}
+    },
+    {
+      "method": "eth_getBlockByNumber",
+      "params": [
+        "0x1936619",
+        false
+      ],
+      "httpStatus": 200,
+      "quotaHeaders": {}
+    },
+    {
+      "method": "eth_getLogs",
+      "params": [
+        {
+          "address": "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f",
+          "topics": [
+            "0x0d3648bd0f6ba80134a33ba9275ac585d9d315f0ad8355cddefde31afa28d0e9"
+          ],
+          "fromBlock": "0x19345dc",
+          "toBlock": "0x19345dc"
+        }
+      ],
+      "httpStatus": 200,
+      "quotaHeaders": {}
+    },
+    {
+      "method": "eth_getLogs",
+      "params": [
+        {
+          "address": "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f",
+          "topics": [
+            "0x0d3648bd0f6ba80134a33ba9275ac585d9d315f0ad8355cddefde31afa28d0e9"
+          ],
+          "fromBlock": "0x1933e0c",
+          "toBlock": "0x1933e0c"
+        }
+      ],
+      "httpStatus": 403,
+      "quotaHeaders": {},
+      "providerErrorCode": -32602,
+      "providerErrorCategory": "ARCHIVE_PERSONAL_TOKEN_REQUIRED"
+    },
+    {
+      "method": "eth_call",
+      "params": [
+        {
+          "to": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+          "data": "0x18160ddd",
+          "gas": "0x186a0"
+        },
+        "0x1933e0c"
+      ],
+      "httpStatus": 403,
+      "quotaHeaders": {},
+      "providerErrorCode": -32602,
+      "providerErrorCategory": "ARCHIVE_PERSONAL_TOKEN_REQUIRED"
+    },
+    {
+      "method": "eth_getStorageAt",
+      "params": [
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        "0x0",
+        "0x1933e0c"
+      ],
+      "httpStatus": 403,
+      "quotaHeaders": {},
+      "providerErrorCode": -32602,
+      "providerErrorCategory": "ARCHIVE_PERSONAL_TOKEN_REQUIRED"
+    }
+  ],
+  "logs": {
+    "type": "ISSUE15_RPC_READONLY_CAPABILITY",
+    "chainId": 1,
+    "blockNumber": 26437145,
+    "blockHash": "0x46eff74c6c5fdc7555c6f966f464352fcebf421e49dacb91575d48da13682dc9",
+    "factory": "UniswapV2",
+    "olderBlock": 26426892,
+    "recentBlock": 26428892,
+    "gap": {
+      "failedBlocks": 42000,
+      "completedBlocks": 8254,
+      "totalBlocks": 50254,
+      "failedWindows": 21
+    },
+    "probes": {
+      "recentOneBlock": {
+        "status": "SUCCESS",
+        "count": 0
+      },
+      "oldOneBlock": {
+        "status": "FAILED",
+        "error": "RPC_HTTP_403"
+      },
+      "oldTenBlocks": {
+        "status": "NOT_TESTED"
+      },
+      "oldOriginalWindow": {
+        "status": "NOT_TESTED"
+      }
+    },
+    "finding": "SINGLE_OLD_BLOCK_ACCESS_DENIED",
+    "recommended": "Smaller chunks alone cannot fix this observed one-block failure; verify historical-access permissions with provider",
+    "originalCoverageUpdated": false,
+    "approvedForExecution": false,
+    "transactionSubmissionEnabled": false
+  },
+  "logRequestCount": 4,
+  "state": {
+    "type": "ISSUE15_HISTORICAL_STATE_CAPABILITY",
+    "block": 26426892,
+    "contract": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+    "ethCall": {
+      "method": "eth_call",
+      "status": "FAILED",
+      "block": 26426892,
+      "error": "RPC_HTTP_403"
+    },
+    "storage": {
+      "method": "eth_getStorageAt",
+      "status": "FAILED",
+      "block": 26426892,
+      "error": "RPC_HTTP_403"
+    },
+    "originalCoverageUpdated": false,
+    "approvedForExecution": false
+  },
+  "stateRequestCount": 2,
+  "checkpointSha256After": "a8ba86237df096e632721b2b8eb25265bc4bb133fea6b55ba0f5501519708885",
+  "checkpointUnchanged": true
+}
