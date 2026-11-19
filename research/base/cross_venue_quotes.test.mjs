@@ -47,3 +47,10 @@ test("same-block roundtrip quotes in both directions are not net-profit claims",
  assert(calls.filter(c=>c.method==="eth_call").every(c=>c.params[1]==="0xff"));
  assert(!calls.some(c=>/eth_send|personal_|debug_|trace_/.test(c.method)));
 });
+
+test("all configured contract addresses are 20 bytes",()=>{
+ for(const [name,venue] of Object.entries(VENUES)){
+  for(const field of ["factory","quoter","pool"])
+   assert.match(venue[field],/^0x[0-9a-f]{40}$/i,name+" "+field);
+ }
+});
