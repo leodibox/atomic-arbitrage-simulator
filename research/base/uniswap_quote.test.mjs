@@ -40,3 +40,6 @@ test("six same-block QuoterV2 mock reads with no submissions",async()=>{
  assert(calls.filter(c=>c.method==="eth_call").every(c=>c.params[1]==="0xab"));
  assert(!calls.some(c=>c.method.startsWith("eth_send")));
 });
+test("Uniswap contract addresses have 20 bytes",()=>{
+ for(const address of [FACTORY,POOL,QUOTER_V2,WETH,USDC]) assert.match(address,/^0x[0-9a-f]{40}$/i);
+});
