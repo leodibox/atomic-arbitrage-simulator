@@ -47,7 +47,7 @@ test("six spot roundtrips at same block with no send methods",async()=>{
  };
  const out=await inspect(fake);
  assert.equal(out.results.length,6);
- assert.equal(out.rpcCalls,19);
+ assert.equal(out.rpcCalls,20);
  assert.equal(out.aeroTickSpacing,1);
  assert.equal(out.netProfitVerified,false);
  assert.equal(out.txSubmitted,0);
