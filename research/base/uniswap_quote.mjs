@@ -2,7 +2,7 @@
 // Bounded, read-only exact single-pool Uniswap V3 quotes on Base. NOT an arbitrage signal.
 import { pathToFileURL } from "node:url";
 export const CHAIN_ID="0x2105";
-export const FACTORY="0x33128a8fc17869897dce68ed026d694621f6fdd";
+export const FACTORY="0x33128a8fc17869897dce68ed026d694621f6fdfd";
 export const QUOTER_V2="0x3d4e44eb1374240ce5f1b871ab261cd16335b76a";
 export const POOL="0xd0b53d9277642d899df5c87a3966a349a798f224";
 export const WETH="0x4200000000000000000000000000000000000006";
@@ -23,6 +23,9 @@ export const decodeWords=(raw,n)=>{
 export const factoryCallData=()=>"0x1698ee82"+encodeAddress(WETH)+encodeAddress(USDC)+encodeUint(FEE);
 export const quoterCallData=(tokenIn,tokenOut,amountIn)=>"0xc6a5026a"+encodeAddress(tokenIn)+encodeAddress(tokenOut)+encodeUint(amountIn)+encodeUint(FEE)+encodeUint(0);
 export async function queryUniswap(fetcher=fetch,endpoint=process.env.BASE_RPC_URL||"https://mainnet.base.org"){
+ for(const [label,v] of Object.entries({FACTORY,QUOTER_V2,POOL,WETH,USDC})){
+  if(!/^0x[0-9a-f]{40}$/i.test(v))throw Error("Malformed "+label+" address");
+ }
  const u=new URL(endpoint);
  if(u.protocol!=="https:"||u.username||u.password||u.search||u.hash) throw new Error("HTTPS URL without query credentials required");
  let calls=0;
