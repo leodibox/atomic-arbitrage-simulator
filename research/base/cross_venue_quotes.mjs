@@ -9,7 +9,7 @@ export const TOKENS = Object.freeze({
   USDC:"0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
 });
 export const VENUES = Object.freeze({
-  uniswap:{factory:"0x33128a8fc17869897dce68ed026d694621f6fdd",
+  uniswap:{factory:"0x33128a8fc17869897dce68ed026d694621f6fdfd",
     quoter:"0x3d4e44eb1374240ce5f1b871ab261cd16335b76a",
     pool:"0xd0b53d9277642d899df5c87a3966a349a798f224",fee:500n},
   pancake:{factory:"0x0bfbcf9fa4f9c56b0f40a671ad40e0805a091865",
@@ -26,6 +26,12 @@ export const factoryData=v=>"0x1698ee82"+address(TOKENS.WETH)+address(TOKENS.USD
 export const quoteData=(v,tokenIn,tokenOut,amount)=>
  "0xc6a5026a"+address(tokenIn)+address(tokenOut)+word(amount)+word(v.fee)+word(0);
 export async function compare(fetcher=fetch,endpoint=process.env.BASE_RPC_URL||"https://mainnet.base.org"){
+ // Reject malformed network addresses locally before issuing any RPC calls.
+ for(const [label,v] of Object.entries(VENUES)){
+  for(const field of ["factory","quoter","pool"]){
+   if(!/^0x[0-9a-f]{40}$/i.test(v[field]))throw Error(label+" malformed "+field+" address");
+  }
+ }
  const url=new URL(endpoint);
  if(url.protocol!=="https:"||url.username||url.password||url.search||url.hash)throw Error("Use HTTPS RPC without URL query credentials");
  let requests=0;
