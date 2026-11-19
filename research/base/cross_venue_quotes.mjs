@@ -37,7 +37,7 @@ export async function compare(fetcher=fetch,endpoint=process.env.BASE_RPC_URL||"
     signal:AbortSignal.timeout(8000)});
   if(!res.ok)throw Error(stage+" HTTP "+res.status);
   const payload=await res.json();
-  if(payload.error||typeof payload.result!=="string")throw Error(stage+" RPC refused"+(Number.isInteger(payload.error?.code)?" code="+payload.error.code:"")+(typeof payload.error?.message==="string"?" message="+payload.error.message.slice(0,180).replace(/https?:\\/\\/\\S+/g,"[endpoint]"):""));
+  if(payload.error||typeof payload.result!=="string")throw Error(stage+" RPC refused"+(Number.isInteger(payload.error?.code)?" code="+payload.error.code:""));
   return payload.result;
  }
  if((await rpc("eth_chainId",[],"chainId")).toLowerCase()!=="0x2105")throw Error("Wrong chain");
