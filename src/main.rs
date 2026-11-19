@@ -2,7 +2,7 @@ use alloy::providers::{Provider, ProviderBuilder};
 use alloy::rpc::types::Filter;
 use alloy::transports::ws::WsConnect;
 use sandooo::arbitrage::{
-    find_cycles,
+    find_cycles, Cycle,
     rpc::{load_allowlisted_reserves, load_token_decimals, verify_allowlisted_tokens},
     state::sync_topic,
     topology::count_closed_routes,
@@ -27,9 +27,10 @@ async fn main() -> anyhow::Result<()> {
     let ws = WsConnect::new(env.wss_url.clone());
     let provider = ProviderBuilder::new().connect_ws(ws).await?;
 
-    let scan_enabled = std::env::var("POOL_SCAN_ENABLED")
-        .map(|v| !v.eq_ignore_ascii_case("false"))
-        .unwrap_or(true);
+    // Fail closed: never select the legacy pending-transaction strategy by
+    // omission, typo, or an unknown value.
+    let scan_config = std::env::var("POOL_SCAN_ENABLED").ok();
+    let scan_enabled = parse_scan_enabled(scan_config.as_deref())?;
     if !scan_enabled {
         return run_allowlisted_simulation(provider).await;
     }
@@ -48,6 +49,46 @@ async fn main() -> anyhow::Result<()> {
     ));
     while let Some(r) = set.join_next().await { r??; }
     Ok(())
+}
+
+/// Missing configuration selects read-only discovery; only the literal
+/// `true` activates the separately configured legacy strategy.
+fn parse_scan_enabled(value: Option<&str>) -> anyhow::Result<bool> {
+    match value {
+        None => Ok(false),
+        Some(v) if v.eq_ignore_ascii_case("false") => Ok(false),
+        Some(v) if v.eq_ignore_ascii_case("true") => Ok(true),
+        _ => anyhow::bail!("POOL_SCAN_ENABLED must be true or false"),
+    }
+}
+
+/// Retain each distinct start-token + ordered route, including the reverse
+/// direction. For multiple probes of the SAME start token and route, preserve
+/// the largest after-Aave PRE-GAS margin, not the first arbitrary probe.
+/// This is discovery deduplication only, NOT post-gas trade approval.
+fn best_discovery_per_ordered_route(cycles: Vec<Cycle>, premium_bps: u64) -> Vec<Cycle> {
+    let pre_gas_margin = |cycle: &Cycle| {
+        let premium = cycle.amount_in * alloy::primitives::U256::from(premium_bps)
+            / alloy::primitives::U256::from(10_000u64);
+        cycle.gross_profit.saturating_sub(premium)
+    };
+    let mut winners: Vec<Cycle> = Vec::new();
+    let mut positions: HashMap<String, usize> = HashMap::new();
+    for candidate in cycles {
+        let mut key = format!("{:?}", candidate.start);
+        for hop in &candidate.hops {
+            key.push_str(&format!("|{:?}:{:?}:{:?}", hop.pair, hop.token_in, hop.token_out));
+        }
+        if let Some(&index) = positions.get(&key) {
+            if pre_gas_margin(&candidate) > pre_gas_margin(&winners[index]) {
+                winners[index] = candidate;
+            }
+        } else {
+            positions.insert(key, winners.len());
+            winners.push(candidate);
+        }
+    }
+    winners
 }
 
 fn pow10(decimals: u8) -> alloy::primitives::U256 {
@@ -203,7 +244,8 @@ where
         let block = observed_block.max(cache.read().await.last_block());
         observed_block = block;
 
-        let (pools, fresh_count, stale_count, cycles, near_misses, last_block, amounts_tried) = {
+        let (pools, fresh_count, stale_count, cycles, near_misses, last_block, amounts_tried,
+            v2_compatible_gross_candidates) = {
             let guard = cache.read().await;
             // Count fresh vs stale pools
             let fresh_count = guard.values()
@@ -328,23 +370,23 @@ where
                 all_cycles.extend(kept);
             }
 
-            // Dedup: keep best gross_profit per (pairs set, hops)
-            let mut seen_keys: HashSet<String> = HashSet::new();
-            let mut deduped = Vec::new();
-            for c in &all_cycles {
-                let mut pairs: Vec<_> = c.hops.iter().map(|h| format!("{:?}", h.pair)).collect();
-                pairs.sort();
-                let key = format!("{}:{}", pairs.join(","), c.hops.len());
-                if seen_keys.insert(key) {
-                    deduped.push(c.clone());
-                }
-            }
+            // Preserve both directions and start assets, selecting the best
+            // probe amount only within the same ordered route.
+            let deduped = best_discovery_per_ordered_route(all_cycles, premium_bps);
+
+            // Structural ABI compatibility is NOT equivalent to executable
+            // profitability; gas/eth_call and wallet controls remain unverified.
+            let v2_compatible_gross_candidates = deduped.iter()
+                .filter(|candidate| candidate.hops.iter()
+                    .all(|hop| guard.get(&hop.pair).is_some_and(|p| p.fee_bps == 30)))
+                .count();
 
             // Sort near-misses, keep top N
             near_miss_list.sort_by(|a, b| b.0.cmp(&a.0));
             near_miss_list.truncate(near_miss_count);
 
-            (guard.len(), fresh_count, stale_count, deduped, near_miss_list, guard.last_block(), amounts_tried)
+            (guard.len(), fresh_count, stale_count, deduped, near_miss_list, guard.last_block(),
+                amounts_tried, v2_compatible_gross_candidates)
         };
 
         info!(
@@ -352,13 +394,15 @@ where
             fresh = fresh_count,
             stale = stale_count,
             cycles = cycles.len(),
+            v2_compatible_gross_candidates,
+            incompatible_gross_candidates = cycles.len() - v2_compatible_gross_candidates,
             near_misses = near_misses.len(),
             block = last_block,
             amounts_tried,
             max_hops = sim_max_hops,
             premium_bps,
             gas_cost_raw,
-            "arbitrage discovery (gross candidates only, not live-trade signals)"
+            "arbitrage discovery (gross candidates only; V2 compatibility counted, not live-trade signals)"
         );
 
         for cycle in cycles.iter().take(5) {
@@ -425,8 +469,78 @@ where
 }
 #[cfg(test)]
 mod scanner_tests {
-    use super::pow10;
-    use alloy::primitives::U256;
+    use super::{best_discovery_per_ordered_route, parse_scan_enabled, pow10};
+    use alloy::primitives::{address, U256};
+    use sandooo::arbitrage::{Cycle, Hop};
+
+    #[test]
+    fn missing_or_invalid_scan_mode_never_activates_legacy_strategy() {
+        assert!(!parse_scan_enabled(None).unwrap());
+        assert!(!parse_scan_enabled(Some("false")).unwrap());
+        assert!(parse_scan_enabled(Some("TRUE")).unwrap());
+        assert!(parse_scan_enabled(Some("yes")).is_err());
+        assert!(parse_scan_enabled(Some("")).is_err());
+    }
+
+    #[test]
+    fn reverse_paths_preserved_and_best_probe_wins_per_ordered_route() {
+        let a = address!("0000000000000000000000000000000000000001");
+        let b = address!("0000000000000000000000000000000000000002");
+        let first = address!("0000000000000000000000000000000000000010");
+        let second = address!("0000000000000000000000000000000000000020");
+        let make_cycle = |pairs: [alloy::primitives::Address; 2], amount: u64, gross: u64| {
+            Cycle {
+                start: a,
+                amount_in: U256::from(amount),
+                amount_out: U256::from(amount + gross),
+                gross_profit: U256::from(gross),
+                hops: vec![
+                    Hop {pair:pairs[0], token_in:a, token_out:b,
+                         amount_in:U256::from(amount),amount_out:U256::from(amount)},
+                    Hop {pair:pairs[1], token_in:b, token_out:a,
+                         amount_in:U256::from(amount),amount_out:U256::from(amount+gross)},
+                ],
+                freshest_block: 100,
+            }
+        };
+        let selected = best_discovery_per_ordered_route(vec![
+            make_cycle([first, second], 100, 5),
+            make_cycle([second, first], 100, 3),
+            make_cycle([first, second], 200, 25),
+        ], 5);
+        assert_eq!(selected.len(), 2, "reverse route must not disappear");
+        assert_eq!(selected[0].gross_profit, U256::from(25));
+        assert_eq!(selected[0].amount_in, U256::from(200));
+        assert_eq!(selected[1].hops[0].pair, second);
+    }
+
+    #[test]
+    fn retains_best_after_aave_margin_not_largest_gross_profits() {
+        let a = address!("0000000000000000000000000000000000000001");
+        let b = address!("0000000000000000000000000000000000000002");
+        let p1 = address!("0000000000000000000000000000000000000010");
+        let p2 = address!("0000000000000000000000000000000000000020");
+        let make = |amount: u64, gross: u64| Cycle {
+            start: a,
+            amount_in: U256::from(amount),
+            amount_out: U256::from(amount + gross),
+            gross_profit: U256::from(gross),
+            hops: vec![
+                Hop {pair:p1, token_in:a, token_out:b, amount_in:U256::from(amount),
+                    amount_out:U256::from(amount)},
+                Hop {pair:p2, token_in:b, token_out:a, amount_in:U256::from(amount),
+                    amount_out:U256::from(amount + gross)},
+            ],
+            freshest_block: 100,
+        };
+        // 5bps: smaller probe margin = 20-5 = 15;
+        // larger probe margin = 31-25 = 6, despite greater gross profit.
+        let winners = best_discovery_per_ordered_route(
+            vec![make(50_000, 31), make(10_000, 20)], 5
+        );
+        assert_eq!(winners.len(), 1);
+        assert_eq!(winners[0].amount_in, U256::from(10_000u64));
+    }
 
     #[test]
     fn six_decimal_amount_units() {
