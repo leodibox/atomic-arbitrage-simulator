@@ -256,7 +256,7 @@ where
                     )
                     .await;
                     let mut added_pairs = Vec::new();
-                    let refreshed =
+                    let (refreshed, net_snapshot_available) =
                         if let Some((gas_units, (pairs, expanded, added, snapshot, decimals))) =
                             discovery
                         {
@@ -275,28 +275,22 @@ where
                                 min_weth,
                                 pairs: pairs.into_iter().map(|(pair, _, _)| pair).collect(),
                             });
-                            Ok(snapshot)
+                            (Ok(snapshot), true)
                         } else if expanded_allowlist == allowlist {
-                            load_allowlisted_reserves(&provider, &allowlist, b).await
+                            (load_allowlisted_reserves(&provider, &allowlist, b).await, true)
                         } else {
-                            match tokio::time::timeout(
-                                std::time::Duration::from_secs(5),
+                            refresh_with_configured_fallback(
+                                b,
+                                Duration::from_secs(5),
                                 load_allowlisted_reserves(&provider, &expanded_allowlist, b),
+                                || load_allowlisted_reserves(&provider, &allowlist, b),
                             )
                             .await
-                            {
-                                Ok(Ok(fresh)) => Ok(fresh),
-                                _ => {
-                                    warn!(
-                                    "expanded V2 refresh unavailable; refreshing configured pools"
-                                );
-                                    load_allowlisted_reserves(&provider, &allowlist, b).await
-                                }
-                            }
                         };
                     match refreshed {
                         Ok(fresh) => {
-                            if let Some(net_scan) = &net_scan {
+                            if let Some(net_scan) = net_scan.as_ref().filter(|_| net_snapshot_available)
+                            {
                                 let priced = net_scan.report(
                                     &provider,
                                     &fresh,
@@ -557,6 +551,26 @@ where
     }
 }
 
+// Configured-only reserves keep gross discovery running but cannot price the
+// full set of canonical V2 routes.
+async fn refresh_with_configured_fallback<T, F>(
+    block: u64,
+    deadline: Duration,
+    expanded: impl std::future::Future<Output = anyhow::Result<T>>,
+    configured: impl FnOnce() -> F,
+) -> (anyhow::Result<T>, bool)
+where
+    F: std::future::Future<Output = anyhow::Result<T>>,
+{
+    match tokio::time::timeout(deadline, expanded).await {
+        Ok(Ok(snapshot)) => (Ok(snapshot), true),
+        _ => {
+            warn!(block, "expanded V2 refresh unavailable; skipping net screen and refreshing configured pools");
+            (configured().await, false)
+        }
+    }
+}
+
 async fn retry_v2_discovery<T, F: std::future::Future<Output = anyhow::Result<T>>>(
     pending_gas_units: &mut Option<u64>,
     deadline: Duration,
@@ -633,6 +647,29 @@ mod scanner_tests {
     use super::{best_discovery_per_ordered_route, parse_scan_enabled, pow10};
     use alloy::primitives::{address, U256};
     use sandooo::arbitrage::{Cycle, Hop};
+
+    #[tokio::test]
+    async fn configured_refresh_fallback_is_ineligible_for_net_pricing() {
+        let (fallback, net_available) = super::refresh_with_configured_fallback(
+            100,
+            super::Duration::ZERO,
+            std::future::pending(),
+            || async { Ok(42) },
+        )
+        .await;
+        assert_eq!(fallback.unwrap(), 42);
+        assert!(!net_available);
+
+        let (expanded, net_available) = super::refresh_with_configured_fallback(
+            101,
+            super::Duration::ZERO,
+            async { Ok(43) },
+            || async { panic!("successful expanded refresh must not use fallback") },
+        )
+        .await;
+        assert_eq!(expanded.unwrap(), 43);
+        assert!(net_available);
+    }
 
     #[tokio::test]
     async fn v2_discovery_stays_pending_on_timeout_and_recovers_once() {

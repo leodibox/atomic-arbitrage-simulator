@@ -217,8 +217,20 @@ mod tests {
         assert_eq!(plan.pair_path[20], 1);
         assert_eq!(plan.pair_path[41], 1); // second pair is token0=weth, takes weth
         assert_eq!(plan.min_profit_onchain, U256::from(70u64));
-        assert_eq!(&plan.calldata[..4],
-            &alloy::primitives::keccak256("executeArbitrage(address,uint256,bytes,uint256)").as_slice()[..4]);
+        // Independently encoded with Cast against the entry point shared by
+        // FlashLoanArb and FlashLoanArbGuarded.
+        let expected = hex::decode(concat!(
+            "ced1514f",
+            "0000000000000000000000000000000000000000000000000000000000000001",
+            "00000000000000000000000000000000000000000000000000000000000003e8",
+            "0000000000000000000000000000000000000000000000000000000000000080",
+            "0000000000000000000000000000000000000000000000000000000000000046",
+            "000000000000000000000000000000000000000000000000000000000000002a",
+            "0000000000000000000000000000000000000010010000000000000000000000",
+            "0000000000000000200100000000000000000000000000000000000000000000",
+        ))
+        .unwrap();
+        assert_eq!(plan.calldata, expected);
     }
 
     #[test]
