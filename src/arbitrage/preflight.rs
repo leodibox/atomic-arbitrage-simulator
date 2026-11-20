@@ -8,8 +8,8 @@
 //! before using this plan. This module is NOT a live-trading approval.
 
 use super::cycles::Cycle;
-use super::state::ReserveCache;
-use alloy::primitives::{Address, Bytes, U256};
+use super::state::{PoolState, ReserveCache};
+use alloy::primitives::{address, Address, Bytes, U256};
 use alloy::sol;
 use alloy::sol_types::SolCall;
 use anyhow::{bail, ensure, Result};
@@ -56,6 +56,14 @@ pub struct PreparedV2FlashLoan {
     pub expected_gross_profit: U256,
 }
 
+/// Known pair-level constraints of the legacy FlashLoanArb executor.
+pub fn supports_legacy_v2_pool(pool: &PoolState) -> bool {
+    // Mainnet USDT returns no data from transfer. The executor's typed
+    // IERC20.transfer expects a bool and reverts on that empty return.
+    const USDT: Address = address!("dAC17F958D2ee523a2206206994597C13D831ec7");
+    pool.fee_bps == 30 && pool.token0 != USDT && pool.token1 != USDT
+}
+
 /// Validate local execution compatibility and build calldata for
 /// FlashLoanArb.executeArbitrage(). Passing here is not enough to send:
 /// the caller MUST independently simulate the exact transaction at the latest
@@ -90,7 +98,7 @@ pub fn prepare_v2_flash_loan(
         let Some(pool) = cache.get(&hop.pair) else {
             bail!("unknown or V3 pool in a V2-only executable route");
         };
-        ensure!(pool.fee_bps == 30, "V2 executor hardcodes 30 bps swap fees");
+        ensure!(supports_legacy_v2_pool(pool), "V2 executor requires 30 bps pairs and supported token transfers");
         ensure!(pool.block > 0 && pool.block <= limits.current_block
             && limits.current_block - pool.block <= limits.max_pool_age_blocks,
             "pool state is stale or from the future");
@@ -149,7 +157,20 @@ pub fn prepare_v2_flash_loan(
 mod tests {
     use super::*;
     use crate::arbitrage::{find_cycles, PoolState};
-    use alloy::primitives::address;
+
+    #[test]
+    fn excludes_usdt_in_either_position_for_legacy_executor() {
+        let (cache, cycle, _, _) = fixture();
+        let mut pool = cache.get(&cycle.hops[0].pair).unwrap().clone();
+        assert!(supports_legacy_v2_pool(&pool));
+        let usdt = address!("dAC17F958D2ee523a2206206994597C13D831ec7");
+        let original_token0 = pool.token0;
+        pool.token0 = usdt;
+        assert!(!supports_legacy_v2_pool(&pool));
+        pool.token0 = original_token0;
+        pool.token1 = usdt;
+        assert!(!supports_legacy_v2_pool(&pool));
+    }
 
     fn fixture() -> (ReserveCache, Cycle, ExecutionLimits, GasQuote) {
         let usdc = address!("0000000000000000000000000000000000000001");

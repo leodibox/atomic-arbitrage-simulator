@@ -1,6 +1,6 @@
 use super::{
     find_cycles,
-    preflight::{prepare_v2_flash_loan, ExecutionLimits, GasQuote},
+    preflight::{prepare_v2_flash_loan, supports_legacy_v2_pool, ExecutionLimits, GasQuote},
     ReserveCache,
 };
 use crate::common::constants::WETH;
@@ -46,7 +46,7 @@ impl NetScan {
                 pool.reserve1
             };
             if self.pairs.contains(&pool.pair)
-                && pool.fee_bps == 30
+                && supports_legacy_v2_pool(pool)
                 && pool.block == block
                 && weth_reserve >= self.min_weth
                 && !pool.reserve0.is_zero()

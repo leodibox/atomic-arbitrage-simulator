@@ -3,6 +3,7 @@ use alloy::rpc::types::Filter;
 use alloy::transports::ws::WsConnect;
 use sandooo::arbitrage::{
     find_cycles, Cycle,
+    preflight::supports_legacy_v2_pool,
     rpc::{load_allowlisted_reserves, load_token_decimals, verify_allowlisted_tokens},
     state::sync_topic,
     topology::count_closed_routes,
@@ -456,7 +457,7 @@ where
             // profitability; gas/eth_call and wallet controls remain unverified.
             let v2_compatible_gross_candidates = deduped.iter()
                 .filter(|candidate| candidate.hops.iter()
-                    .all(|hop| guard.get(&hop.pair).is_some_and(|p| p.fee_bps == 30)))
+                    .all(|hop| guard.get(&hop.pair).is_some_and(supports_legacy_v2_pool)))
                 .count();
 
             // Sort near-misses, keep top N
@@ -492,7 +493,7 @@ where
             let v2_contract_compatible = {
                 let guard = cache.read().await;
                 cycle.hops.iter().all(|hop| guard.get(&hop.pair)
-                    .is_some_and(|pool| pool.fee_bps == 30))
+                    .is_some_and(supports_legacy_v2_pool))
             };
             info!(
                 gross_profit_raw = %cycle.gross_profit,
