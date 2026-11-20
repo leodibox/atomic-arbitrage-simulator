@@ -54,6 +54,8 @@ git pull --ff-only origin feature/guarded-restricted-operator-20261120
 cd contracts
 $env:PATH = "$HOME\Downloads\atomic-arbitrage-simulator\tools\foundry;$env:PATH"
 forge test --match-contract GuardedRestrictedOperatorTest -vvv
+# Avoid starting unrelated historical-fork test setup against an unstable RPC
+Remove-Item Env:HTTPS_URL -ErrorAction SilentlyContinue
 forge test --no-match-contract AaveMainnetForkTest -vv
 $env:HTTPS_URL = "https://ethereum-rpc.publicnode.com"
 Remove-Item Env:MAINNET_FORK_BLOCK -ErrorAction SilentlyContinue
@@ -70,3 +72,13 @@ that themselves failed for contract reasons.
 - No database or persistent one-shot ledger activated.
 - No real order sender, no gas spending, no trade execution.
 - No change to the Rust Render worker, Nimbus or Trading Lab.
+
+### Windows verification correction (2026-11-20)
+
+Original owner run: all 5 new operator tests PASS; Aave fork 4 PASS, 0 skipped
+at block 26459416. Mixed nonfork run: 36 PASS, 3 FAIL (one expected
+`NotOwner()` instead of now-correct `NotExecutor()`; the other two came
+from PublicNode returning a missing state block for legacy `setUp()`).
+This branch updates the stale test assertion and isolates nonfork legacy
+setup by clearing `HTTPS_URL` before nonfork regression, then restoring it
+only for explicit Aave fork certification. **Changes have not yet been rerun**.
