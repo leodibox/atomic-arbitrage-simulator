@@ -103,8 +103,11 @@ impl NetScan {
         let mut rejected_by_net_floor = 0u64;
         let mut rejected_by_preflight = 0u64;
         let mut accepted_probe_sizes = 0u64;
-        for divisor in [1, 10, 100] {
-            let amount = loan_cap / U256::from(divisor);
+        // Use a bounded range of loan sizes; a profitable 0.06-0.10 WETH
+        // cycle can be missed by only probing 0.25, 0.025 and 0.0025 WETH.
+        // All probes remain <= the existing max_flash_loan; this is
+        // discovery-only and does NOT authorize execution or change gas.
+        for amount in v2_weth_probe_amounts(loan_cap) {
             for cycle in find_cycles(&verified, &[WETH], amount, limits.max_hops, U256::ZERO) {
                 v2_gross_cycles += 1;
                 let Some(net) = conservative_net(
@@ -146,6 +149,20 @@ impl NetScan {
     }
 }
 
+/// Sample diverse amounts without exceeding the existing flash-loan cap.
+/// Deduplicate small amounts that round to the same integer raw token amount.
+fn v2_weth_probe_amounts(loan_cap: U256) -> Vec<U256> {
+    let mut amounts = Vec::new();
+    for percent in [100u64, 50, 40, 30, 25, 20, 10, 5, 2, 1] {
+        let Some(scaled) = loan_cap.checked_mul(U256::from(percent)) else { continue };
+        let amount = scaled / U256::from(100u64);
+        if !amount.is_zero() && amount <= loan_cap && !amounts.contains(&amount) {
+            amounts.push(amount);
+        }
+    }
+    amounts
+}
+
 fn conservative_net(
     out: U256,
     loan: U256,
@@ -164,6 +181,24 @@ fn conservative_net(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn weth_probe_amounts_cover_middle_sizes_within_existing_cap() {
+        let cap = U256::from(250_000u64);
+        let amounts = v2_weth_probe_amounts(cap);
+        assert!(amounts.contains(&U256::from(100_000u64)));
+        assert!(amounts.contains(&U256::from(62_500u64)));
+        assert!(amounts.contains(&U256::from(25_000u64)));
+        assert!(amounts.iter().all(|&amount| !amount.is_zero() && amount <= cap));
+        assert_eq!(amounts.len(), 10);
+    }
+
+    #[test]
+    fn weth_probe_amounts_deduplicate_and_reject_zero() {
+        assert!(v2_weth_probe_amounts(U256::ZERO).is_empty());
+        let amounts = v2_weth_probe_amounts(U256::from(1u64));
+        assert_eq!(amounts, vec![U256::from(1u64)]);
+    }
 
     #[test]
     fn rejects_gross_profit_that_does_not_cover_buffered_costs() {
