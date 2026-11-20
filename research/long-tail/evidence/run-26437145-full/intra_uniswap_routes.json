@@ -1,0 +1,675 @@
+{
+  "chainId": 1,
+  "blockNumber": 26437145,
+  "blockHash": "0x46eff74c6c5fdc7555c6f966f464352fcebf421e49dacb91575d48da13682dc9",
+  "source": "PR16_PINNED_END_OF_BLOCK_INVENTORY",
+  "poolCount": 74,
+  "rejectedPoolObservations": 1,
+  "errors": [
+    {
+      "address": "0x397FF1542f962076d0BFE58eA045FfA2d347ACa0",
+      "reason": "POOL_FACTORY_NOT_UNISWAP"
+    }
+  ],
+  "routes": [
+    {
+      "type": "V3_FEE_TIER_TWO_POOL",
+      "start": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "tokens": [
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+      ],
+      "pools": [
+        "0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640",
+        "0xE0554a476A092703abdB3Ef35c80e0D76d32939F"
+      ],
+      "poolKinds": [
+        "v3",
+        "v3"
+      ],
+      "feePpm": [
+        500,
+        100
+      ],
+      "totalFeeBpsApprox": 6,
+      "blockNumber": 26437145,
+      "blockHash": "0x46eff74c6c5fdc7555c6f966f464352fcebf421e49dacb91575d48da13682dc9",
+      "statePosition": "END_OF_BLOCK_SNAPSHOT",
+      "transactionPositionVerified": false,
+      "exactQuoteVerified": false,
+      "gasVerified": false,
+      "netProfitVerified": false,
+      "fundingVerified": false,
+      "settlementVerified": false,
+      "approvedForExecution": false
+    },
+    {
+      "type": "V3_FEE_TIER_TWO_POOL",
+      "start": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "tokens": [
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+      ],
+      "pools": [
+        "0xE0554a476A092703abdB3Ef35c80e0D76d32939F",
+        "0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640"
+      ],
+      "poolKinds": [
+        "v3",
+        "v3"
+      ],
+      "feePpm": [
+        100,
+        500
+      ],
+      "totalFeeBpsApprox": 6,
+      "blockNumber": 26437145,
+      "blockHash": "0x46eff74c6c5fdc7555c6f966f464352fcebf421e49dacb91575d48da13682dc9",
+      "statePosition": "END_OF_BLOCK_SNAPSHOT",
+      "transactionPositionVerified": false,
+      "exactQuoteVerified": false,
+      "gasVerified": false,
+      "netProfitVerified": false,
+      "fundingVerified": false,
+      "settlementVerified": false,
+      "approvedForExecution": false
+    },
+    {
+      "type": "UNISWAP_V2_V3_TWO_POOL",
+      "start": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "tokens": [
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+      ],
+      "pools": [
+        "0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc",
+        "0xE0554a476A092703abdB3Ef35c80e0D76d32939F"
+      ],
+      "poolKinds": [
+        "v2",
+        "v3"
+      ],
+      "feePpm": [
+        3000,
+        100
+      ],
+      "totalFeeBpsApprox": 31,
+      "blockNumber": 26437145,
+      "blockHash": "0x46eff74c6c5fdc7555c6f966f464352fcebf421e49dacb91575d48da13682dc9",
+      "statePosition": "END_OF_BLOCK_SNAPSHOT",
+      "transactionPositionVerified": false,
+      "exactQuoteVerified": false,
+      "gasVerified": false,
+      "netProfitVerified": false,
+      "fundingVerified": false,
+      "settlementVerified": false,
+      "approvedForExecution": false
+    },
+    {
+      "type": "UNISWAP_V2_V3_TWO_POOL",
+      "start": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "tokens": [
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+      ],
+      "pools": [
+        "0xE0554a476A092703abdB3Ef35c80e0D76d32939F",
+        "0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc"
+      ],
+      "poolKinds": [
+        "v3",
+        "v2"
+      ],
+      "feePpm": [
+        100,
+        3000
+      ],
+      "totalFeeBpsApprox": 31,
+      "blockNumber": 26437145,
+      "blockHash": "0x46eff74c6c5fdc7555c6f966f464352fcebf421e49dacb91575d48da13682dc9",
+      "statePosition": "END_OF_BLOCK_SNAPSHOT",
+      "transactionPositionVerified": false,
+      "exactQuoteVerified": false,
+      "gasVerified": false,
+      "netProfitVerified": false,
+      "fundingVerified": false,
+      "settlementVerified": false,
+      "approvedForExecution": false
+    },
+    {
+      "type": "V3_FEE_TIER_TWO_POOL",
+      "start": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "tokens": [
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+      ],
+      "pools": [
+        "0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8",
+        "0xE0554a476A092703abdB3Ef35c80e0D76d32939F"
+      ],
+      "poolKinds": [
+        "v3",
+        "v3"
+      ],
+      "feePpm": [
+        3000,
+        100
+      ],
+      "totalFeeBpsApprox": 31,
+      "blockNumber": 26437145,
+      "blockHash": "0x46eff74c6c5fdc7555c6f966f464352fcebf421e49dacb91575d48da13682dc9",
+      "statePosition": "END_OF_BLOCK_SNAPSHOT",
+      "transactionPositionVerified": false,
+      "exactQuoteVerified": false,
+      "gasVerified": false,
+      "netProfitVerified": false,
+      "fundingVerified": false,
+      "settlementVerified": false,
+      "approvedForExecution": false
+    },
+    {
+      "type": "V3_FEE_TIER_TWO_POOL",
+      "start": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "tokens": [
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+      ],
+      "pools": [
+        "0xE0554a476A092703abdB3Ef35c80e0D76d32939F",
+        "0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8"
+      ],
+      "poolKinds": [
+        "v3",
+        "v3"
+      ],
+      "feePpm": [
+        100,
+        3000
+      ],
+      "totalFeeBpsApprox": 31,
+      "blockNumber": 26437145,
+      "blockHash": "0x46eff74c6c5fdc7555c6f966f464352fcebf421e49dacb91575d48da13682dc9",
+      "statePosition": "END_OF_BLOCK_SNAPSHOT",
+      "transactionPositionVerified": false,
+      "exactQuoteVerified": false,
+      "gasVerified": false,
+      "netProfitVerified": false,
+      "fundingVerified": false,
+      "settlementVerified": false,
+      "approvedForExecution": false
+    },
+    {
+      "type": "UNISWAP_V2_V3_TWO_POOL",
+      "start": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "tokens": [
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+      ],
+      "pools": [
+        "0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640",
+        "0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc"
+      ],
+      "poolKinds": [
+        "v3",
+        "v2"
+      ],
+      "feePpm": [
+        500,
+        3000
+      ],
+      "totalFeeBpsApprox": 35,
+      "blockNumber": 26437145,
+      "blockHash": "0x46eff74c6c5fdc7555c6f966f464352fcebf421e49dacb91575d48da13682dc9",
+      "statePosition": "END_OF_BLOCK_SNAPSHOT",
+      "transactionPositionVerified": false,
+      "exactQuoteVerified": false,
+      "gasVerified": false,
+      "netProfitVerified": false,
+      "fundingVerified": false,
+      "settlementVerified": false,
+      "approvedForExecution": false
+    },
+    {
+      "type": "UNISWAP_V2_V3_TWO_POOL",
+      "start": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "tokens": [
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+      ],
+      "pools": [
+        "0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc",
+        "0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640"
+      ],
+      "poolKinds": [
+        "v2",
+        "v3"
+      ],
+      "feePpm": [
+        3000,
+        500
+      ],
+      "totalFeeBpsApprox": 35,
+      "blockNumber": 26437145,
+      "blockHash": "0x46eff74c6c5fdc7555c6f966f464352fcebf421e49dacb91575d48da13682dc9",
+      "statePosition": "END_OF_BLOCK_SNAPSHOT",
+      "transactionPositionVerified": false,
+      "exactQuoteVerified": false,
+      "gasVerified": false,
+      "netProfitVerified": false,
+      "fundingVerified": false,
+      "settlementVerified": false,
+      "approvedForExecution": false
+    },
+    {
+      "type": "V3_FEE_TIER_TWO_POOL",
+      "start": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "tokens": [
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+      ],
+      "pools": [
+        "0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640",
+        "0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8"
+      ],
+      "poolKinds": [
+        "v3",
+        "v3"
+      ],
+      "feePpm": [
+        500,
+        3000
+      ],
+      "totalFeeBpsApprox": 35,
+      "blockNumber": 26437145,
+      "blockHash": "0x46eff74c6c5fdc7555c6f966f464352fcebf421e49dacb91575d48da13682dc9",
+      "statePosition": "END_OF_BLOCK_SNAPSHOT",
+      "transactionPositionVerified": false,
+      "exactQuoteVerified": false,
+      "gasVerified": false,
+      "netProfitVerified": false,
+      "fundingVerified": false,
+      "settlementVerified": false,
+      "approvedForExecution": false
+    },
+    {
+      "type": "V3_FEE_TIER_TWO_POOL",
+      "start": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "tokens": [
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+      ],
+      "pools": [
+        "0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8",
+        "0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640"
+      ],
+      "poolKinds": [
+        "v3",
+        "v3"
+      ],
+      "feePpm": [
+        3000,
+        500
+      ],
+      "totalFeeBpsApprox": 35,
+      "blockNumber": 26437145,
+      "blockHash": "0x46eff74c6c5fdc7555c6f966f464352fcebf421e49dacb91575d48da13682dc9",
+      "statePosition": "END_OF_BLOCK_SNAPSHOT",
+      "transactionPositionVerified": false,
+      "exactQuoteVerified": false,
+      "gasVerified": false,
+      "netProfitVerified": false,
+      "fundingVerified": false,
+      "settlementVerified": false,
+      "approvedForExecution": false
+    },
+    {
+      "type": "UNISWAP_V2_V3_TWO_POOL",
+      "start": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "tokens": [
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+      ],
+      "pools": [
+        "0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8",
+        "0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc"
+      ],
+      "poolKinds": [
+        "v3",
+        "v2"
+      ],
+      "feePpm": [
+        3000,
+        3000
+      ],
+      "totalFeeBpsApprox": 60,
+      "blockNumber": 26437145,
+      "blockHash": "0x46eff74c6c5fdc7555c6f966f464352fcebf421e49dacb91575d48da13682dc9",
+      "statePosition": "END_OF_BLOCK_SNAPSHOT",
+      "transactionPositionVerified": false,
+      "exactQuoteVerified": false,
+      "gasVerified": false,
+      "netProfitVerified": false,
+      "fundingVerified": false,
+      "settlementVerified": false,
+      "approvedForExecution": false
+    },
+    {
+      "type": "UNISWAP_V2_V3_TWO_POOL",
+      "start": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "tokens": [
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+      ],
+      "pools": [
+        "0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc",
+        "0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8"
+      ],
+      "poolKinds": [
+        "v2",
+        "v3"
+      ],
+      "feePpm": [
+        3000,
+        3000
+      ],
+      "totalFeeBpsApprox": 60,
+      "blockNumber": 26437145,
+      "blockHash": "0x46eff74c6c5fdc7555c6f966f464352fcebf421e49dacb91575d48da13682dc9",
+      "statePosition": "END_OF_BLOCK_SNAPSHOT",
+      "transactionPositionVerified": false,
+      "exactQuoteVerified": false,
+      "gasVerified": false,
+      "netProfitVerified": false,
+      "fundingVerified": false,
+      "settlementVerified": false,
+      "approvedForExecution": false
+    },
+    {
+      "type": "V3_FEE_TIER_TWO_POOL",
+      "start": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "tokens": [
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+      ],
+      "pools": [
+        "0x7BeA39867e4169DBe237d55C8242a8f2fcDcc387",
+        "0xE0554a476A092703abdB3Ef35c80e0D76d32939F"
+      ],
+      "poolKinds": [
+        "v3",
+        "v3"
+      ],
+      "feePpm": [
+        10000,
+        100
+      ],
+      "totalFeeBpsApprox": 101,
+      "blockNumber": 26437145,
+      "blockHash": "0x46eff74c6c5fdc7555c6f966f464352fcebf421e49dacb91575d48da13682dc9",
+      "statePosition": "END_OF_BLOCK_SNAPSHOT",
+      "transactionPositionVerified": false,
+      "exactQuoteVerified": false,
+      "gasVerified": false,
+      "netProfitVerified": false,
+      "fundingVerified": false,
+      "settlementVerified": false,
+      "approvedForExecution": false
+    },
+    {
+      "type": "V3_FEE_TIER_TWO_POOL",
+      "start": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "tokens": [
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+      ],
+      "pools": [
+        "0xE0554a476A092703abdB3Ef35c80e0D76d32939F",
+        "0x7BeA39867e4169DBe237d55C8242a8f2fcDcc387"
+      ],
+      "poolKinds": [
+        "v3",
+        "v3"
+      ],
+      "feePpm": [
+        100,
+        10000
+      ],
+      "totalFeeBpsApprox": 101,
+      "blockNumber": 26437145,
+      "blockHash": "0x46eff74c6c5fdc7555c6f966f464352fcebf421e49dacb91575d48da13682dc9",
+      "statePosition": "END_OF_BLOCK_SNAPSHOT",
+      "transactionPositionVerified": false,
+      "exactQuoteVerified": false,
+      "gasVerified": false,
+      "netProfitVerified": false,
+      "fundingVerified": false,
+      "settlementVerified": false,
+      "approvedForExecution": false
+    },
+    {
+      "type": "V3_FEE_TIER_TWO_POOL",
+      "start": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "tokens": [
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+      ],
+      "pools": [
+        "0x7BeA39867e4169DBe237d55C8242a8f2fcDcc387",
+        "0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640"
+      ],
+      "poolKinds": [
+        "v3",
+        "v3"
+      ],
+      "feePpm": [
+        10000,
+        500
+      ],
+      "totalFeeBpsApprox": 105,
+      "blockNumber": 26437145,
+      "blockHash": "0x46eff74c6c5fdc7555c6f966f464352fcebf421e49dacb91575d48da13682dc9",
+      "statePosition": "END_OF_BLOCK_SNAPSHOT",
+      "transactionPositionVerified": false,
+      "exactQuoteVerified": false,
+      "gasVerified": false,
+      "netProfitVerified": false,
+      "fundingVerified": false,
+      "settlementVerified": false,
+      "approvedForExecution": false
+    },
+    {
+      "type": "V3_FEE_TIER_TWO_POOL",
+      "start": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "tokens": [
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+      ],
+      "pools": [
+        "0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640",
+        "0x7BeA39867e4169DBe237d55C8242a8f2fcDcc387"
+      ],
+      "poolKinds": [
+        "v3",
+        "v3"
+      ],
+      "feePpm": [
+        500,
+        10000
+      ],
+      "totalFeeBpsApprox": 105,
+      "blockNumber": 26437145,
+      "blockHash": "0x46eff74c6c5fdc7555c6f966f464352fcebf421e49dacb91575d48da13682dc9",
+      "statePosition": "END_OF_BLOCK_SNAPSHOT",
+      "transactionPositionVerified": false,
+      "exactQuoteVerified": false,
+      "gasVerified": false,
+      "netProfitVerified": false,
+      "fundingVerified": false,
+      "settlementVerified": false,
+      "approvedForExecution": false
+    },
+    {
+      "type": "UNISWAP_V2_V3_TWO_POOL",
+      "start": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "tokens": [
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+      ],
+      "pools": [
+        "0x7BeA39867e4169DBe237d55C8242a8f2fcDcc387",
+        "0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc"
+      ],
+      "poolKinds": [
+        "v3",
+        "v2"
+      ],
+      "feePpm": [
+        10000,
+        3000
+      ],
+      "totalFeeBpsApprox": 130,
+      "blockNumber": 26437145,
+      "blockHash": "0x46eff74c6c5fdc7555c6f966f464352fcebf421e49dacb91575d48da13682dc9",
+      "statePosition": "END_OF_BLOCK_SNAPSHOT",
+      "transactionPositionVerified": false,
+      "exactQuoteVerified": false,
+      "gasVerified": false,
+      "netProfitVerified": false,
+      "fundingVerified": false,
+      "settlementVerified": false,
+      "approvedForExecution": false
+    },
+    {
+      "type": "UNISWAP_V2_V3_TWO_POOL",
+      "start": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "tokens": [
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+      ],
+      "pools": [
+        "0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc",
+        "0x7BeA39867e4169DBe237d55C8242a8f2fcDcc387"
+      ],
+      "poolKinds": [
+        "v2",
+        "v3"
+      ],
+      "feePpm": [
+        3000,
+        10000
+      ],
+      "totalFeeBpsApprox": 130,
+      "blockNumber": 26437145,
+      "blockHash": "0x46eff74c6c5fdc7555c6f966f464352fcebf421e49dacb91575d48da13682dc9",
+      "statePosition": "END_OF_BLOCK_SNAPSHOT",
+      "transactionPositionVerified": false,
+      "exactQuoteVerified": false,
+      "gasVerified": false,
+      "netProfitVerified": false,
+      "fundingVerified": false,
+      "settlementVerified": false,
+      "approvedForExecution": false
+    },
+    {
+      "type": "V3_FEE_TIER_TWO_POOL",
+      "start": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "tokens": [
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+      ],
+      "pools": [
+        "0x7BeA39867e4169DBe237d55C8242a8f2fcDcc387",
+        "0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8"
+      ],
+      "poolKinds": [
+        "v3",
+        "v3"
+      ],
+      "feePpm": [
+        10000,
+        3000
+      ],
+      "totalFeeBpsApprox": 130,
+      "blockNumber": 26437145,
+      "blockHash": "0x46eff74c6c5fdc7555c6f966f464352fcebf421e49dacb91575d48da13682dc9",
+      "statePosition": "END_OF_BLOCK_SNAPSHOT",
+      "transactionPositionVerified": false,
+      "exactQuoteVerified": false,
+      "gasVerified": false,
+      "netProfitVerified": false,
+      "fundingVerified": false,
+      "settlementVerified": false,
+      "approvedForExecution": false
+    },
+    {
+      "type": "V3_FEE_TIER_TWO_POOL",
+      "start": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "tokens": [
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+      ],
+      "pools": [
+        "0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8",
+        "0x7BeA39867e4169DBe237d55C8242a8f2fcDcc387"
+      ],
+      "poolKinds": [
+        "v3",
+        "v3"
+      ],
+      "feePpm": [
+        3000,
+        10000
+      ],
+      "totalFeeBpsApprox": 130,
+      "blockNumber": 26437145,
+      "blockHash": "0x46eff74c6c5fdc7555c6f966f464352fcebf421e49dacb91575d48da13682dc9",
+      "statePosition": "END_OF_BLOCK_SNAPSHOT",
+      "transactionPositionVerified": false,
+      "exactQuoteVerified": false,
+      "gasVerified": false,
+      "netProfitVerified": false,
+      "fundingVerified": false,
+      "settlementVerified": false,
+      "approvedForExecution": false
+    }
+  ],
+  "routeCount": 20,
+  "truncated": false,
+  "counts": {
+    "v3FeeTier": 12,
+    "uniV2V3": 8,
+    "triangles": 0
+  },
+  "transactionPositionReplay": "NOT_REPLAYED",
+  "actualProfitableTradeFound": false,
+  "approvedForExecution": false,
+  "explanation": "End-of-block topology only; no post-trigger transaction state, exact quotes or observed profitability.",
+  "sourceInventoryPath": "research/long-tail/evidence/run-26437145-full/inventory.json",
+  "historicalReplayStatus": "NOT_REPLAYED",
+  "grossPositiveVerified": 0,
+  "netPositiveVerified": 0,
+  "netAfterBuilderPaymentVerified": false,
+  "triggerTransactionHash": null,
+  "triggerTransactionIndex": null,
+  "transactionSubmissionEnabled": false
+}

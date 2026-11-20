@@ -1,0 +1,1 @@
+{"name":"issue-15-long-tail-research","private":true,"type":"module","dependencies":{"ethers":"6.15.0"},"scripts":{"test":"node --test test/*.test.mjs","probe":"node src/probe.mjs"}}

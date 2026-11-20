@@ -1,0 +1,9 @@
+[profile.default]
+src = "src"
+test = "test"
+out = "out"
+cache_path = "cache"
+libs = ["../../../contracts/lib"]
+remappings = ["forge-std/=../../../contracts/lib/forge-std/src/"]
+solc = "0.8.24"
+fs_permissions = [{ access = "read", path = "../evidence" }]

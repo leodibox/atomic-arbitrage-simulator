@@ -1,0 +1,52 @@
+
+> test
+> node --test test/*.test.mjs
+
+✔ 5 distinct Uniswap pools produce 12 directed V3 tier + 8 V2/V3 routes (29.944855ms)
+✔ single pool reversed is not arbitrage (0.54315ms)
+✔ Sushi pool excluded even when factory state and liquidity are positive (1.010984ms)
+✔ one verified triangle exists in both directions, without same-token loops (0.643895ms)
+✔ duplicate inventory observations deduplicate identical pool identity (0.358705ms)
+✔ unknown factories, unsupported fees, missing identity and inactive pools cannot enter topology (0.653004ms)
+✔ invalid chain, block identity and path limit fail closed (0.744778ms)
+✔ route cap visibly truncates, does not pretend to cover the search space (0.525038ms)
+✔ conflicting pool identities at the same address abort the entire inventory (0.48459ms)
+✔ integer V2 fees and marginal-negative static curve are not profitable at any sampled size (1.637096ms)
+✔ static-V2 sizing agrees with brute force within integer rounding tolerance (6.00369ms)
+✔ no break-even is fabricated if gas exceeds maximum gross curve (0.267079ms)
+✔ gas scenarios and reversion EV use WETH/ETH units and no execution flags (0.886303ms)
+✔ integer sqrt floor and invalid reserves (0.645562ms)
+✔ RPC denies transaction and bundle methods before any network request (1.240367ms)
+✔ event scanning records partial RPC coverage instead of inventing pools (0.804544ms)
+✔ real event ABI decodes pair and rejects other emitter (8.950489ms)
+✔ stratified resource cap preserves endpoints and never fabricates tokens (1.606813ms)
+✔ historical counterpart lookup checks all fee tiers including missing venues (0.940914ms)
+✔ weak positive gross margin has no attainable EV break-even probability (0.295763ms)
+✔ V3 reference quote carries tick crossings and exact pinned block (0.96222ms)
+✔ invalid event emitter is excluded rather than accepted as a discovered pool (0.790325ms)
+✔ factory-discovered spoofed pool identity never enters verified pool inventory (0.819283ms)
+✔ WETH inventory recognizes two verified Uniswap pools (4.898355ms)
+✔ parse V2 WETH movement and V3 signed negative delta correctly (1.112289ms)
+✔ largest SINGLE Swap per block is selected with stable tie-breaking (1.679381ms)
+✔ a duplicate event is counted as rejected not counted twice (1.361598ms)
+✔ foreign pool and wrong event type cannot be selected (0.543122ms)
+✔ receipt + block match only confirms transaction, NOT post-transaction state (1.474695ms)
+✔ receipt mismatch, reverted transaction, absent swap, or gasless header fails closed (1.8035ms)
+✔ future logs cannot appear in a previous pinned inventory (0.510351ms)
+✔ recent Swap events after old inventory are accepted only under an explicit finalized bound (0.767115ms)
+✔ receipt with tampered Swap amount fails even with same tx hash/log index (1.260276ms)
+✔ spoofed factory or noncanonical fee cannot enter the pool index (0.348475ms)
+✔ Swap topics match independent Ethereum Keccak-256 of canonical event signatures (235.307264ms)
+ℹ tests 35
+ℹ suites 0
+ℹ pass 35
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 435.596705
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.2
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.2
+npm notice To update run: npm install -g npm@12.2.2
+npm notice

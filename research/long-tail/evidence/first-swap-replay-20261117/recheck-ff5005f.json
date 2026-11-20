@@ -1,0 +1,28 @@
+{
+  "verifiedHead": "ff5005faa090dc2f4e385b8258a4c9178c1539bd",
+  "tests": {
+    "passed": 39,
+    "failed": 0,
+    "skipped": 0
+  },
+  "filesReviewed": 14,
+  "potentialCredentialMatches": 0,
+  "preservedSampleCounts": {
+    "logs": 166,
+    "candidates": 8,
+    "receiptFailures": 0,
+    "rpcCalls": 20
+  },
+  "sampleSha256": "3df6464a1d7c9e34a24508feaa58faae9bba655091bef00c70bfb0af289bde2f",
+  "configuredHttpsUrlPresent": false,
+  "configuredRuntimeVariablesOrSecrets": false,
+  "newReplayRpcCalls": 0,
+  "priorReplayEvidence": "replay-capability.json",
+  "status": "INSUFFICIENT_REPLAY_ACCESS",
+  "traceFailure": "RPC_debug_traceCall_HTTP_200_CODE_-32601",
+  "parentFailure": "RPC_eth_getStorageAt_HTTP_403_CODE_-32602",
+  "postTransactionStateVerified": false,
+  "economicsRun": false,
+  "tradeExecutionAllowed": false,
+  "reasonForNoRetry": "No new endpoint/binding or other meaningful access change; preserve documented one-candidate blocker without repeating identical requests."
+}
