@@ -32,6 +32,39 @@ CREATE TABLE IF NOT EXISTS first_live_trade_attempt (
     reserved_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Independent DB-side guard against dishonest or buggy caller-provided
+-- maximum_gas_usd_e8; compute exact ceiling after a 10% FX buffer.
+-- It is not an ETH/USD oracle: the quote still MUST be independently verified.
+-- Use clock_timestamp() in a trigger, not a volatile CHECK constraint.
+CREATE OR REPLACE FUNCTION first_live_trade_validate_budget()
+RETURNS trigger LANGUAGE plpgsql AS $
+DECLARE
+    computed_usd_e8 NUMERIC;
+BEGIN
+    IF NEW.quote_timestamp > clock_timestamp() + INTERVAL '2 seconds'
+       OR NEW.quote_timestamp < clock_timestamp() - INTERVAL '30 seconds'
+    THEN
+        RAISE EXCEPTION 'missing, stale or future ETH/USD quote';
+    END IF;
+    -- wei * ETH/USD(8 decimals) / 10^18, with an additional 10% margin.
+    computed_usd_e8 := ceil(
+        NEW.gas_limit::numeric * NEW.max_fee_per_gas_wei
+        * NEW.eth_usd_e8 * 110 / (100 * 1000000000000000000::numeric)
+    );
+    IF computed_usd_e8 <= 0
+       OR computed_usd_e8 > 500000000
+       OR NEW.maximum_gas_usd_e8 <> computed_usd_e8
+    THEN
+        RAISE EXCEPTION 'worst-case gas cost exceeds or mismatches $5 USD budget';
+    END IF;
+    RETURN NEW;
+END $;
+
+DROP TRIGGER IF EXISTS first_live_trade_budget_on_insert ON first_live_trade_attempt;
+CREATE TRIGGER first_live_trade_budget_on_insert
+BEFORE INSERT ON first_live_trade_attempt
+FOR EACH ROW EXECUTE FUNCTION first_live_trade_validate_budget();
+
 COMMENT ON TABLE first_live_trade_attempt IS
     'Immutable consumed-at-reservation ledger; no worker retries, even if broadcast outcome unknown';
 
