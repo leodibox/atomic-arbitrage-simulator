@@ -81,12 +81,19 @@ pub async fn verify_guarded_read_only<P: Provider<Ethereum> + Clone>(
     let aave_code = provider.get_code_at(AAVE_V3_POOL).await?;
     ensure!(!aave_code.is_empty(), "canonical Aave V3 Pool runtime missing");
     let contract = GuardedReadOnly::new(config.executor, provider.clone());
+    // Retain each generated call builder through try_join: temporaries
+    // created inside the macro otherwise cause Rust E0716.
+    let owner_call = contract.owner();
+    let pool_call = contract.pool();
+    let recipient_call = contract.profitRecipient();
+    let paused_call = contract.paused();
+    let payout_call = contract.autoPayout();
     let (owner, pool, recipient, paused, auto_payout) = tokio::try_join!(
-        contract.owner().call(),
-        contract.pool().call(),
-        contract.profitRecipient().call(),
-        contract.paused().call(),
-        contract.autoPayout().call()
+        owner_call.call(),
+        pool_call.call(),
+        recipient_call.call(),
+        paused_call.call(),
+        payout_call.call()
     )?;
     ensure!(owner == config.expected_owner, "owner() differs from expected signer public address");
     ensure!(pool == AAVE_V3_POOL, "pool() is not canonical Aave V3 on mainnet");
