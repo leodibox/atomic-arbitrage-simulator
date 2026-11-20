@@ -1,16 +1,22 @@
+use alloy::primitives::Address;
 use alloy::providers::{Provider, ProviderBuilder};
 use alloy::rpc::types::Filter;
 use alloy::transports::ws::WsConnect;
 use sandooo::arbitrage::{
-    find_cycles, Cycle,
+    find_cycles,
+    net::NetScan,
     preflight::supports_legacy_v2_pool,
-    rpc::{load_allowlisted_reserves, load_token_decimals, verify_allowlisted_tokens},
+    rpc::{
+        discover_weth_v2, load_allowlisted_reserves, load_token_decimals, verify_allowlisted_tokens,
+    },
     state::sync_topic,
     topology::count_closed_routes,
+    Cycle, ReserveCache,
 };
 use sandooo::common::{constants::get_env, pools::load_all_pools, streams::*};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::{broadcast, Mutex, Notify, RwLock};
 use tokio::task::JoinSet;
 use tracing::{info, warn};
@@ -159,53 +165,24 @@ where
         .unwrap_or(10);
 
     let block = provider.get_block_number().await?;
-    let mut initial = load_allowlisted_reserves(&provider, &allowlist, block).await?;
+    let initial = load_allowlisted_reserves(&provider, &allowlist, block).await?;
     // Prevent impossible/incorrect pool routes from silently passing discovery.
     verify_allowlisted_tokens(&provider, &initial).await?;
     let mut expanded_allowlist = allowlist.clone();
     let mut net_scan = None;
-    if let Ok(gas_units) = std::env::var("SIM_V2_GAS_UNITS") {
-        use alloy::primitives::U256;
-        use sandooo::arbitrage::{net::NetScan, rpc::discover_weth_v2};
-
-        let gas_units = gas_units
-            .parse::<u64>()
-            .context("invalid SIM_V2_GAS_UNITS")?;
+    let mut pending_gas_units = if let Ok(value) = std::env::var("SIM_V2_GAS_UNITS") {
+        let gas_units = value.parse::<u64>().context("invalid SIM_V2_GAS_UNITS")?;
         anyhow::ensure!(gas_units > 0, "SIM_V2_GAS_UNITS must be positive");
-        let min_weth = U256::from(25) * pow10(18);
-        let discovery = async {
-            let pairs = discover_weth_v2(&provider, block, min_weth).await?;
-            let mut expanded = allowlist.clone();
-            for (pair, token0, token1) in &pairs {
-                if initial.get(pair).is_none() && initial.get_v3(pair).is_none() {
-                    expanded.push_str(&format!(";{pair}:{token0}:{token1}:30"));
-                }
-            }
-            let snapshot = load_allowlisted_reserves(&provider, &expanded, block).await?;
-            Ok::<_, anyhow::Error>((pairs, expanded, snapshot))
-        };
-        match tokio::time::timeout(std::time::Duration::from_secs(5), discovery).await {
-            Ok(Ok((pairs, expanded, snapshot))) => {
-                info!(
-                    verified_v2_pairs = pairs.len(),
-                    pools = snapshot.len(),
-                    "canonical Ethereum WETH V2 discovery ready"
-                );
-                expanded_allowlist = expanded;
-                initial = snapshot;
-                net_scan = Some(NetScan {
-                    gas_units,
-                    tip_wei: 2_000_000_000,
-                    slippage_bps: 10,
-                    min_weth,
-                    pairs: pairs.into_iter().map(|(pair, _, _)| pair).collect(),
-                });
-            }
-            Ok(Err(_)) | Err(_) => {
-                warn!("canonical V2 discovery unavailable; using configured allowlist")
-            }
-        }
-    }
+        Some(gas_units)
+    } else {
+        None
+    };
+    let min_weth = alloy::primitives::U256::from(25) * pow10(18);
+    let configured_pairs: HashSet<_> = initial
+        .pairs()
+        .copied()
+        .chain(initial.v3_values().map(|pool| pool.pair))
+        .collect();
     let structural_routes = count_closed_routes(&initial, sim_max_hops);
     if structural_routes == 0 {
         warn!(pools = initial.len(), max_hops = sim_max_hops,
@@ -221,42 +198,27 @@ where
         .collect::<HashSet<_>>()
         .into_iter()
         .collect();
-    let decimals_map = load_token_decimals(&provider, unique_tokens).await;
+    let mut decimals_map = load_token_decimals(&provider, unique_tokens).await;
     let cache = Arc::new(RwLock::new(initial));
     let sync_notify = Arc::new(Notify::new());
 
     // Event-driven reserve updates from V2 Sync logs (best-effort).
     // V3 pools still use periodic reconciliation until a verified swap-state
     // subscription is implemented.
-    let sync_cache = cache.clone();
-    let sync_provider = provider.clone();
-    let sync_pairs = pair_addresses.clone();
-    let event_notify = sync_notify.clone();
-    tokio::spawn(async move {
-        let filter = Filter::new().address(sync_pairs).event_signature(sync_topic());
-        match sync_provider.subscribe_logs(&filter).await {
-            Ok(sub) => {
-                let mut stream = sub.into_stream();
-                while let Some(log) = stream.next().await {
-                    let pair = log.address();
-                    let block = log.block_number.unwrap_or_default();
-                    let data: &[u8] = log.data().data.as_ref();
-                    let mut guard = sync_cache.write().await;
-                    if guard.apply_sync_log(pair, data, block) {
-                        event_notify.notify_one();
-                    }
-                }
-                warn!("sync log stream ended");
-            }
-            Err(error) => warn!(%error, "sync log subscription unavailable; falling back to polling refresh"),
-        }
-    });
+    subscribe_v2_sync(
+        provider.clone(),
+        pair_addresses,
+        cache.clone(),
+        sync_notify.clone(),
+    );
 
     // Timer is independent of Sync events so reconciliation still happens
     // even if the pool is quiet or the log stream is interrupted.
     let mut refresh_timer = tokio::time::interval(std::time::Duration::from_secs(sim_interval));
     refresh_timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-    refresh_timer.tick().await; // We already fetched the initial snapshot.
+    if pending_gas_units.is_none() {
+        refresh_timer.tick().await; // We already fetched the initial snapshot.
+    }
     let mut refresh_due = false;
     let mut observed_block = block;
     info!(
@@ -273,24 +235,65 @@ where
             match provider.get_block_number().await {
                 Ok(b) => {
                     observed_block = observed_block.max(b);
-                    let refreshed = if expanded_allowlist == allowlist {
-                        load_allowlisted_reserves(&provider, &allowlist, b).await
-                    } else {
-                        match tokio::time::timeout(
-                            std::time::Duration::from_secs(5),
-                            load_allowlisted_reserves(&provider, &expanded_allowlist, b),
-                        )
-                        .await
+                    let discovery = retry_v2_discovery(
+                        &mut pending_gas_units,
+                        Duration::from_secs(5),
+                        || async {
+                            let pairs = discover_weth_v2(&provider, b, min_weth).await?;
+                            let (expanded, added) =
+                                expand_v2_allowlist(&allowlist, &configured_pairs, &pairs);
+                            let snapshot =
+                                load_allowlisted_reserves(&provider, &expanded, b).await?;
+                            let new_tokens: Vec<_> = pairs
+                                .iter()
+                                .filter(|(pair, _, _)| added.contains(pair))
+                                .flat_map(|(_, token0, token1)| [*token0, *token1])
+                                .filter(|token| !decimals_map.contains_key(token))
+                                .collect();
+                            let decimals = load_token_decimals(&provider, new_tokens).await;
+                            Ok((pairs, expanded, added, snapshot, decimals))
+                        },
+                    )
+                    .await;
+                    let mut added_pairs = Vec::new();
+                    let refreshed =
+                        if let Some((gas_units, (pairs, expanded, added, snapshot, decimals))) =
+                            discovery
                         {
-                            Ok(Ok(fresh)) => Ok(fresh),
-                            _ => {
-                                warn!(
+                            info!(
+                                verified_v2_pairs = pairs.len(),
+                                pools = snapshot.len(),
+                                "canonical Ethereum WETH V2 discovery ready"
+                            );
+                            expanded_allowlist = expanded;
+                            decimals_map.extend(decimals);
+                            added_pairs = added;
+                            net_scan = Some(NetScan {
+                                gas_units,
+                                tip_wei: 2_000_000_000,
+                                slippage_bps: 10,
+                                min_weth,
+                                pairs: pairs.into_iter().map(|(pair, _, _)| pair).collect(),
+                            });
+                            Ok(snapshot)
+                        } else if expanded_allowlist == allowlist {
+                            load_allowlisted_reserves(&provider, &allowlist, b).await
+                        } else {
+                            match tokio::time::timeout(
+                                std::time::Duration::from_secs(5),
+                                load_allowlisted_reserves(&provider, &expanded_allowlist, b),
+                            )
+                            .await
+                            {
+                                Ok(Ok(fresh)) => Ok(fresh),
+                                _ => {
+                                    warn!(
                                     "expanded V2 refresh unavailable; refreshing configured pools"
                                 );
-                                load_allowlisted_reserves(&provider, &allowlist, b).await
+                                    load_allowlisted_reserves(&provider, &allowlist, b).await
+                                }
                             }
-                        }
-                    };
+                        };
                     match refreshed {
                         Ok(fresh) => {
                             if let Some(net_scan) = &net_scan {
@@ -313,6 +316,13 @@ where
                             if fresh.last_block() >= guard.last_block() {
                                 *guard = fresh;
                             }
+                            drop(guard);
+                            subscribe_v2_sync(
+                                provider.clone(),
+                                added_pairs,
+                                cache.clone(),
+                                sync_notify.clone(),
+                            );
                         }
                         Err(error) => warn!(%error, "allowlisted reserve refresh failed"),
                     }
@@ -546,11 +556,130 @@ where
         }
     }
 }
+
+async fn retry_v2_discovery<T, F: std::future::Future<Output = anyhow::Result<T>>>(
+    pending_gas_units: &mut Option<u64>,
+    deadline: Duration,
+    discover: impl FnOnce() -> F,
+) -> Option<(u64, T)> {
+    let gas_units = (*pending_gas_units)?;
+    match tokio::time::timeout(deadline, discover()).await {
+        Ok(Ok(discovered)) => {
+            *pending_gas_units = None;
+            Some((gas_units, discovered))
+        }
+        _ => {
+            warn!("canonical V2 discovery unavailable; using configured allowlist and retrying on refresh");
+            None
+        }
+    }
+}
+
+fn expand_v2_allowlist(
+    allowlist: &str,
+    configured_pairs: &HashSet<Address>,
+    pairs: &[(Address, Address, Address)],
+) -> (String, Vec<Address>) {
+    let mut expanded = allowlist.to_owned();
+    let mut seen = configured_pairs.clone();
+    let mut added = Vec::new();
+    for &(pair, token0, token1) in pairs {
+        if seen.insert(pair) {
+            expanded.push_str(&format!(";{pair}:{token0}:{token1}:30"));
+            added.push(pair);
+        }
+    }
+    (expanded, added)
+}
+
+fn subscribe_v2_sync<P>(
+    sync_provider: P,
+    sync_pairs: Vec<Address>,
+    sync_cache: Arc<RwLock<ReserveCache>>,
+    event_notify: Arc<Notify>,
+) where
+    P: Provider<alloy::network::Ethereum> + Send + Sync + 'static,
+{
+    if sync_pairs.is_empty() {
+        return;
+    }
+    tokio::spawn(async move {
+        let filter = Filter::new()
+            .address(sync_pairs)
+            .event_signature(sync_topic());
+        match sync_provider.subscribe_logs(&filter).await {
+            Ok(sub) => {
+                let mut stream = sub.into_stream();
+                while let Some(log) = stream.next().await {
+                    let pair = log.address();
+                    let block = log.block_number.unwrap_or_default();
+                    let data: &[u8] = log.data().data.as_ref();
+                    let mut guard = sync_cache.write().await;
+                    if guard.apply_sync_log(pair, data, block) {
+                        event_notify.notify_one();
+                    }
+                }
+                warn!("sync log stream ended");
+            }
+            Err(error) => {
+                warn!(%error, "sync log subscription unavailable; falling back to polling refresh")
+            }
+        }
+    });
+}
+
 #[cfg(test)]
 mod scanner_tests {
     use super::{best_discovery_per_ordered_route, parse_scan_enabled, pow10};
     use alloy::primitives::{address, U256};
     use sandooo::arbitrage::{Cycle, Hop};
+
+    #[tokio::test]
+    async fn v2_discovery_stays_pending_on_timeout_and_recovers_once() {
+        let mut pending = Some(1_000_000);
+        let deadline = super::Duration::ZERO;
+        let timed_out = super::retry_v2_discovery(&mut pending, deadline, || {
+            std::future::pending::<anyhow::Result<()>>()
+        })
+        .await;
+        assert_eq!(timed_out, None);
+        assert_eq!(pending, Some(1_000_000));
+
+        let recovered =
+            super::retry_v2_discovery(&mut pending, deadline, || async { Ok(42) }).await;
+        assert_eq!(recovered, Some((1_000_000, 42)));
+        assert_eq!(pending, None);
+
+        let after_recovery = super::retry_v2_discovery(
+            &mut pending,
+            deadline,
+            || -> std::future::Ready<anyhow::Result<()>> {
+                panic!("completed discovery must not run again")
+            },
+        )
+        .await;
+        assert_eq!(after_recovery, None);
+    }
+
+    #[test]
+    fn v2_allowlist_expansion_does_not_duplicate_configured_or_discovered_pairs() {
+        let existing = super::Address::repeat_byte(1);
+        let new = super::Address::repeat_byte(2);
+        let token0 = super::Address::repeat_byte(3);
+        let token1 = super::Address::repeat_byte(4);
+        let configured = format!("{existing}:{token0}:{token1}");
+        let (expanded, added) = super::expand_v2_allowlist(
+            &configured,
+            &[existing].into_iter().collect(),
+            &[
+                (existing, token0, token1),
+                (new, token0, token1),
+                (new, token0, token1),
+            ],
+        );
+        assert_eq!(expanded, format!("{configured};{new}:{token0}:{token1}:30"));
+        assert_eq!(added, [new]);
+    }
 
     #[test]
     fn missing_or_invalid_scan_mode_never_activates_legacy_strategy() {
