@@ -112,3 +112,12 @@ CREATE TABLE IF NOT EXISTS sandwich_bot.first_live_trade_receipt (
 -- included; a missing receipt does NOT restore the consumed attempt.
 -- Do not infer a successful profit from receipt_status alone: verify token
 -- balances/event deltas for the exact approved executor and asset.
+
+-- Defense in depth for a shared database. Only an authorized migration/admin
+-- role should apply this script. This does not grant access to any worker.
+-- A separate non-owner app role must receive ONLY explicit USAGE,
+-- INSERT/SELECT on these tables after the database is approved and tested.
+REVOKE ALL ON SCHEMA sandwich_bot FROM PUBLIC;
+REVOKE ALL ON TABLE sandwich_bot.first_live_trade_attempt FROM PUBLIC;
+REVOKE ALL ON TABLE sandwich_bot.first_live_trade_receipt FROM PUBLIC;
+REVOKE ALL ON FUNCTION sandwich_bot.first_live_trade_validate_budget() FROM PUBLIC;
