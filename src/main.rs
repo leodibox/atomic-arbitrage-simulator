@@ -34,6 +34,31 @@ async fn main() -> anyhow::Result<()> {
     let ws = WsConnect::new(env.wss_url.clone());
     let provider = ProviderBuilder::new().connect_ws(ws).await?;
 
+    // Only PUBLIC identity and bytecode checks: never read a private key here.
+    // Missing/partial configuration cannot become trading authorization.
+    match sandooo::arbitrage::guarded_wiring::GuardedPublicConfig::from_environment() {
+        Ok(Some(config)) => match sandooo::arbitrage::guarded_wiring::verify_guarded_read_only(
+            &provider, &config
+        ).await {
+            Ok(attestation) => info!(
+                executor = %attestation.executor, owner = %attestation.owner,
+                recipient = %attestation.recipient,
+                code_keccak = %attestation.code_keccak,
+                paused = attestation.paused, auto_payout = attestation.auto_payout,
+                can_sign = false, transaction_submission_enabled = false,
+                "Guarded on-chain identity verified (read-only, NOT live activation)"
+            ),
+            Err(error) => warn!(%error,
+                "Guarded executor read-only attestation FAILED; no execution permitted"),
+        },
+        Ok(None) => info!(
+            transaction_submission_enabled = false,
+            "Guarded executor deployment/owner not configured; scanner remains read-only"
+        ),
+        Err(error) => warn!(%error,
+            "Guarded executor public configuration INVALID; no execution permitted"),
+    }
+
     // Fail closed: never select the legacy pending-transaction strategy by
     // omission, typo, or an unknown value.
     let scan_config = std::env::var("POOL_SCAN_ENABLED").ok();
