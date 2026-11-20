@@ -95,9 +95,18 @@ impl NetScan {
             quoted_at_block: block,
         };
         let mut positive = HashMap::new();
+        // Diagnostics only: do not change the net profit or preflight gates.
+        // This helps distinguish "no compatible cycles" from "too little
+        // margin after gas" without logging secrets or candidate calldata.
+        let mut v2_gross_cycles = 0u64;
+        let mut rejected_by_costs = 0u64;
+        let mut rejected_by_net_floor = 0u64;
+        let mut rejected_by_preflight = 0u64;
+        let mut accepted_probe_sizes = 0u64;
         for divisor in [1, 10, 100] {
             let amount = loan_cap / U256::from(divisor);
             for cycle in find_cycles(&verified, &[WETH], amount, limits.max_hops, U256::ZERO) {
+                v2_gross_cycles += 1;
                 let Some(net) = conservative_net(
                     cycle.amount_out,
                     amount,
@@ -105,13 +114,18 @@ impl NetScan {
                     gas,
                     self.slippage_bps,
                 ) else {
+                    rejected_by_costs += 1;
                     continue;
                 };
-                if net < limits.min_profit_after_gas_in_asset
-                    || prepare_v2_flash_loan(&verified, &cycle, &limits, Some(&cost)).is_err()
-                {
+                if net < limits.min_profit_after_gas_in_asset {
+                    rejected_by_net_floor += 1;
                     continue;
                 }
+                if prepare_v2_flash_loan(&verified, &cycle, &limits, Some(&cost)).is_err() {
+                    rejected_by_preflight += 1;
+                    continue;
+                }
+                accepted_probe_sizes += 1;
                 let route: Vec<_> = cycle.hops.iter().map(|hop| hop.pair).collect();
                 let best = positive.entry(route).or_insert((net, amount));
                 if net > best.0 {
@@ -120,6 +134,8 @@ impl NetScan {
             }
         }
         info!(block, verified_v2_pools = verified.len(), positive_net_estimates = positive.len(),
+            v2_gross_cycles, rejected_by_costs, rejected_by_net_floor,
+            rejected_by_preflight, accepted_probe_sizes,
             gas_units_budget = self.gas_units, gas_budget_wei = %gas, premium_bps,
             slippage_bps = self.slippage_bps, "read-only WETH V2 net screen");
         for (route, (net, amount)) in positive {
