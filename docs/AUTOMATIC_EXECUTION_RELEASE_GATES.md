@@ -25,7 +25,34 @@ Status: **NOT LIVE**. Owner requires automatic execution without per-trade appro
 
 - No live Guarded contract deployment verified; on-chain owner/permissions cannot be certified.
 - No validated signer, funded gas wallet, current exact-calldata successful simulation or profitable candidate.
-- No durable one-attempt ledger, verified live ETH/USD quote feed or transaction submission code attached to the existing read-only scanner.
+- The PostgreSQL one-attempt ledger **schema is drafted** at `sql/first_live_trade_attempt.sql`, but it is **not deployed**, connected or proven transactional end-to-end. No dedicated Sandwich Bot PostgreSQL instance was found in the connected Render workspace. Existing Postgres/Redis instances belong to Nimbus or Trading Lab and must not be reused without explicit isolated ownership and approval. No verified live ETH/USD quote feed or transaction submission code is attached to the existing read-only scanner.
 - Local build/tests of this branch have not yet been executed by the GitHub connector. GitHub Actions is blocked by billing; use local Codex/Foundry or the existing Render build gate WITHOUT enabling execution.
 
 Until those checks pass, the **only safe deployed state** is read-only scanning. Do not silently change `POOL_SCAN_ENABLED` to `true`: that switch selects a different legacy pending-transaction strategy, not guarded Aave auto-execution.
+
+
+## Dedicated persistent attempt ledger — implementation contract
+
+The SQL migration file `sql/first_live_trade_attempt.sql` uses a single immutable primary key (`first_live_trial`) and `INSERT ... ON CONFLICT DO NOTHING RETURNING attempt_id`. It protects at-most-one **only** if:
+
+- the exact signed transaction has already passed all simulation and price checks;
+- a dedicated PostgreSQL database stores the row durably;
+- the writer commits the reservation *before* broadcasting and verifies commit success;
+- the worker's DB role has only SELECT/INSERT privileges, no DELETE/UPDATE/TRUNCATE and no table ownership;
+- execution never invents another trial ID, resets the row, or broadcasts when the DB is unavailable;
+- no second signer/coordinator can bypass the database or reuse a nonce;
+- the contract's paused/owner/cap/pair state is independently checked immediately before authorization.
+
+No database or secret has been provisioned or modified by this branch. **Do not treat a SQL schema as an active safety limit.**
+
+## Exact transaction simulation — evidence protocol
+
+Before any live activation, require a *real* positive-net candidate with current block, pair direction, size and same-block reserves. Independently confirm:
+
+1. Real deployed `FlashLoanArbGuarded` address, reviewed runtime bytecode hash, on-chain `owner()`, `pool()`, `profitRecipient()`, `paused()`, approved pairs, `maxLoanRaw(asset)`, and dedicated signer.
+2. Exact `executeArbitrage(address,uint256,bytes,uint256)` calldata from `preflight.rs`, with the correct guarded executor ABI and signed gas caps.
+3. `eth_call` and `eth_estimateGas` at a current state using the **actual owner sender and executor**. A paused contract must reject; an off-chain fork may be used for pre-activation testing but is not a live canary.
+4. USD gas conversion from independently verified ETH/USD market data and EIP-1559 `maxFeePerGas`, with the ten-percent safety margin.
+5. A test that a profitable positive in mocks cannot bypass the above, and a real unprofitable route is rejected; no relaxed conditions in production.
+
+No profitable candidate or deployed Guarded executor has been verified as of this document. Do not fabricate an address or interpret fork-only synthetic profits as revenue.
