@@ -1,6 +1,9 @@
--- One-shot execution ledger for Sandwich Bot. Apply ONLY to a dedicated
--- Sandwich Bot PostgreSQL database after owner approval. Never run against
--- Nimbus, Trading Lab or unrelated projects.
+-- One-shot execution ledger for Sandwich Bot. The owner requested NO NEW
+-- Render services and explicitly excluded Nimbus. Only apply within an
+-- authorized, pre-verified, durable PostgreSQL instance, isolated in the
+-- sandwich_bot schema under dedicated roles. Do not run against Nimbus.
+-- The free Trading Lab database expires in December 2026 and is NOT a
+-- trustworthy long-term live gas ledger without a migration/retention plan.
 --
 -- The app must NOT own the table or have DELETE/TRUNCATE/UPDATE privileges.
 -- Use a distinct migration/admin role for DDL and a restricted INSERT/SELECT
@@ -8,7 +11,9 @@
 --
 -- The fixed primary key is intentional: a worker restart or multiple workers
 -- must not create a second attempt by changing an arbitrary trial UUID.
-CREATE TABLE IF NOT EXISTS first_live_trade_attempt (
+CREATE SCHEMA IF NOT EXISTS sandwich_bot;
+
+CREATE TABLE IF NOT EXISTS sandwich_bot.first_live_trade_attempt (
     trial_id TEXT PRIMARY KEY DEFAULT 'first_live_trial'
         CHECK (trial_id = 'first_live_trial'),
     attempt_id UUID NOT NULL DEFAULT gen_random_uuid() UNIQUE,
@@ -36,7 +41,7 @@ CREATE TABLE IF NOT EXISTS first_live_trade_attempt (
 -- maximum_gas_usd_e8; compute exact ceiling after a 10% FX buffer.
 -- It is not an ETH/USD oracle: the quote still MUST be independently verified.
 -- Use clock_timestamp() in a trigger, not a volatile CHECK constraint.
-CREATE OR REPLACE FUNCTION first_live_trade_validate_budget()
+CREATE OR REPLACE FUNCTION sandwich_bot.first_live_trade_validate_budget()
 RETURNS trigger LANGUAGE plpgsql AS $
 DECLARE
     computed_usd_e8 NUMERIC;
@@ -60,12 +65,12 @@ BEGIN
     RETURN NEW;
 END $;
 
-DROP TRIGGER IF EXISTS first_live_trade_budget_on_insert ON first_live_trade_attempt;
+DROP TRIGGER IF EXISTS first_live_trade_budget_on_insert ON sandwich_bot.first_live_trade_attempt;
 CREATE TRIGGER first_live_trade_budget_on_insert
-BEFORE INSERT ON first_live_trade_attempt
-FOR EACH ROW EXECUTE FUNCTION first_live_trade_validate_budget();
+BEFORE INSERT ON sandwich_bot.first_live_trade_attempt
+FOR EACH ROW EXECUTE FUNCTION sandwich_bot.first_live_trade_validate_budget();
 
-COMMENT ON TABLE first_live_trade_attempt IS
+COMMENT ON TABLE sandwich_bot.first_live_trade_attempt IS
     'Immutable consumed-at-reservation ledger; no worker retries, even if broadcast outcome unknown';
 
 -- Only the FIRST insertion can succeed. Caller must require exactly one
@@ -73,7 +78,7 @@ COMMENT ON TABLE first_live_trade_attempt IS
 -- Bind inputs as parameters; the signer/executor/nonce/calldata must match
 -- the exact previously simulated transaction.
 --
--- INSERT INTO first_live_trade_attempt
+-- INSERT INTO sandwich_bot.first_live_trade_attempt
 --   (trial_id, chain_id, signer_address, executor_address, tx_nonce,
 --    calldata_sha256, gas_limit, max_fee_per_gas_wei, eth_usd_e8,
 --    quote_timestamp, maximum_gas_usd_e8)
@@ -92,9 +97,9 @@ COMMENT ON TABLE first_live_trade_attempt IS
 --  * SQL persistence protects a single attempt only if the app uses exactly
 --    this fixed trial key and never bypasses the ledger.
 
-CREATE TABLE IF NOT EXISTS first_live_trade_receipt (
+CREATE TABLE IF NOT EXISTS sandwich_bot.first_live_trade_receipt (
     trial_id TEXT PRIMARY KEY
-        REFERENCES first_live_trade_attempt(trial_id),
+        REFERENCES sandwich_bot.first_live_trade_attempt(trial_id),
     tx_hash TEXT NOT NULL UNIQUE CHECK (tx_hash ~ '^0x[0-9a-f]{64}$'),
     gas_used BIGINT NOT NULL CHECK (gas_used >= 0),
     effective_gas_price_wei NUMERIC(78,0) NOT NULL
