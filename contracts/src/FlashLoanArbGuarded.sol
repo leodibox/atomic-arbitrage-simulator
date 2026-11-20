@@ -35,11 +35,17 @@ contract FlashLoanArbGuarded {
     // All are opt-in. Zero maxLoanRaw disables a flash-loan asset.
     mapping(address => uint256) public maxLoanRaw;
     mapping(address => bool) public approvedPair;
+    // Explicitly delegated execution-only addresses. Owner retains exclusive
+    // control of pairing, loan caps, emergency pause and treasury transfers.
+    // No operator has rights at deployment; never use the owner's private key
+    // in a cloud worker.
+    mapping(address => bool) public approvedOperator;
     bool private inFlight;
     address private inFlightAsset;
     uint256 private inFlightAmount;
 
     error NotOwner();
+    error NotExecutor();
     error NotPool();
     error Paused();
     error Reentrant();
@@ -56,6 +62,7 @@ contract FlashLoanArbGuarded {
     event ProfitPaid(address indexed asset, address indexed recipient, uint256 amount);
     event LoanCapSet(address indexed asset, uint256 capRaw);
     event PairApprovalSet(address indexed pair, bool allowed);
+    event OperatorApprovalSet(address indexed operator, bool allowed);
     event FlashLoanExecuted(address indexed asset, uint256 borrowed, uint256 premium, uint256 profit);
     event ProfitSwept(address indexed token, uint256 amount);
 
@@ -70,6 +77,20 @@ contract FlashLoanArbGuarded {
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
         _;
+    }
+
+    modifier onlyExecutor() {
+        if (msg.sender != owner && !approvedOperator[msg.sender]) revert NotExecutor();
+        _;
+    }
+
+    /// @notice Delegate ONLY trade execution. Defaults to false for all.
+    /// An operator cannot withdraw, set pairs/caps, change the recipient or
+    /// enable payout. Owner can revoke immediately, even while paused.
+    function setApprovedOperator(address operator, bool allowed) external onlyOwner {
+        if (operator == address(0) || operator == address(this)) revert ZeroAddress();
+        approvedOperator[operator] = allowed;
+        emit OperatorApprovalSet(operator, allowed);
     }
 
     function setPaused(bool value) external onlyOwner {
@@ -104,7 +125,7 @@ contract FlashLoanArbGuarded {
         uint256 amount,
         bytes calldata path,
         uint256 minProfit
-    ) external onlyOwner {
+    ) external onlyExecutor {
         if (paused) revert Paused();
         if (inFlight) revert Reentrant();
         if (asset == address(0) || asset.code.length == 0) revert BadAsset();
