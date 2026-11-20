@@ -241,10 +241,17 @@ pub async fn discover_weth_v2<P: Provider<Ethereum> + Clone>(
         FACTORY_V2,
         address!("C0AEe478e3658e2610c5F7A4A2E1777cE9e4f2Ac"),
     ];
+    // A bounded set of widely traded Ethereum-mainnet token contracts.
+    // All candidate PAIRS must still be proven by factory.getPair(),
+    // pair.factory(), token ordering, reserves and minimum WETH liquidity.
+    // No token or discovered pair is automatically approved for execution.
     let markets = [
-        address!("A0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"),
-        address!("dAC17F958D2ee523a2206206994597C13D831ec7"),
-        address!("6B175474E89094C44Da98b954EedeAC495271d0F"),
+        address!("A0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"), // USDC
+        address!("dAC17F958D2ee523a2206206994597C13D831ec7"), // USDT (legacy executor incompatible)
+        address!("6B175474E89094C44Da98b954EedeAC495271d0F"), // DAI
+        address!("2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599"), // WBTC
+        address!("514910771AF9Ca656af840dff83E8264EcF986CA"), // LINK
+        address!("1f9840a85d5aF5bf1D1762F925BDADdC4201F984"), // UNI
     ];
     let mut pools = Vec::new();
     for factory in factories {
