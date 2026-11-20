@@ -41,6 +41,27 @@ The existing Rust `guarded_wiring` check verifies these read-only, on startup. *
 - No direct wallet signing automation is configured. The user's MetaMask holds their seed/key; that key must never be exported to a cloud worker by default.
 - No gas spending or transactions were authorized by creation of this document.
 
+## GitHub Actions billing lock — local verification instead
+
+The repository's GitHub Actions jobs currently **cannot start** because the GitHub
+account is billing-locked. This is an external GitHub account issue, **not** a
+Foundry test result, Solidity failure, or missing Cursor subscription. No
+additional CI workflows or paid CI runners are required to verify locally.
+
+From Windows PowerShell inside a complete local checkout:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-guarded-local.ps1
+```
+
+The script checks the constructor's owner/paused invariants and runs the
+existing guarded tests with a locally installed Forge. If Forge is missing, it
+exits with an explicit message and the official release link. If `HTTPS_URL`
+is configured privately on the local machine, it also runs the mainnet-fork
+suite; otherwise that fork suite is **not certified**. Never publish the URL.
+The script cannot deploy or sign, and passing unit tests is not a security
+audit. Keep this PR DRAFT until a genuine test record is available.
+
 ## Local, no-cost regression tests
 ```
 cd contracts
