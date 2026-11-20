@@ -26,8 +26,40 @@ jobs:
         run: |
           mkdir -p contracts/lib
           git clone --depth 1 https://github.com/foundry-rs/forge-std.git contracts/lib/forge-std
-      - name: Compile and test guarded Aave receiver
+      - name: Compile guarded Aave receiver
+        working-directory: contracts
+        run: forge build
+      - name: Test guarded Aave receiver and report fork coverage
+        working-directory: contracts
+        env:
+          HTTPS_URL: ${{ secrets.HTTPS_URL }}
+        shell: bash
         run: |
-          cd contracts
-          forge build
-          forge test -vvv
+          if [[ -z "${HTTPS_URL:-}" ]]; then
+            coverage="Aave mainnet fork not verified: HTTPS_URL is unavailable. Fork tests are skipped."
+            echo "::warning::$coverage"
+          else
+            coverage="HTTPS_URL is configured. Skipped tests fail this job."
+          fi
+          echo "$coverage" >> "$GITHUB_STEP_SUMMARY"
+
+          results=$(mktemp)
+          trap 'rm -f "$results"' EXIT
+          forge_status=0
+          forge test -vvv --color never | tee "$results" || forge_status=${PIPESTATUS[0]}
+          mapfile -t totals < <(sed -nE 's/^Ran .*: ([0-9]+) tests? passed, ([0-9]+) failed, ([0-9]+) skipped .*/\1 \2 \3/p' "$results")
+          if (( ${#totals[@]} != 1 )); then
+            echo "::error::Forge did not produce a test totals line."
+            exit 1
+          fi
+          read -r passed failed skipped <<< "${totals[0]}"
+          printf 'Foundry: %s passed, %s failed, %s skipped.\n' "$passed" "$failed" "$skipped" | tee -a "$GITHUB_STEP_SUMMARY"
+
+          if (( forge_status != 0 || failed > 0 || passed == 0 )); then
+            echo "::error::Foundry failed or no tests passed."
+            exit 1
+          fi
+          if [[ -n "${HTTPS_URL:-}" ]] && (( skipped > 0 )); then
+            echo "::error::Foundry skipped $skipped tests despite HTTPS_URL being configured."
+            exit 1
+          fi
