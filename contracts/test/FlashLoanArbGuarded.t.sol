@@ -255,7 +255,9 @@ contract FlashLoanArbGuardedTest is Test {
 
     function test_nonOwnerCannotExecuteSweepOrSetLoanCap() public {
         vm.startPrank(address(0xBAD));
-        vm.expectRevert(FlashLoanArbGuarded.NotOwner.selector);
+        // Trade access is owner OR explicitly-approved operator; strangers
+        // must now fail with NotExecutor, while treasury/admin remain NotOwner.
+        vm.expectRevert(FlashLoanArbGuarded.NotExecutor.selector);
         arb.executeArbitrage(address(usdc), 10_000e6, pathGood(), 1);
         vm.expectRevert(FlashLoanArbGuarded.NotOwner.selector);
         arb.sweep(address(usdc), 1);
