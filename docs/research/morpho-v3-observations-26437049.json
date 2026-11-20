@@ -1,0 +1,165 @@
+{
+  "blockNumber": "26437049",
+  "blockHash": "0x752b8f00acb7b104aca58119d5d9707caa192c68b892884c92b3ca72ca91e653",
+  "blockMetadata": {
+    "number": "0x19365b9",
+    "hash": "0x752b8f00acb7b104aca58119d5d9707caa192c68b892884c92b3ca72ca91e653",
+    "timestamp": "0x6afcb3d7",
+    "baseFeePerGas": "0x737970b"
+  },
+  "testObservations": {
+    "testEconomy_1bpThen5bpMorpho": {
+      "route_margin_before_gas_WETH_wei": "-22832809004508",
+      "roundtrip_gas_warm_local": "539238",
+      "roundtrip_input_WETH_wei": "100000000000000000",
+      "first_pool": "0xE0554a476A092703abdB3Ef35c80e0D76d32939F",
+      "second_pool": "0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640"
+    },
+    "testEconomy_1bpThenSame1bpMorpho": {
+      "route_margin_before_gas_WETH_wei": "-19999915628694",
+      "roundtrip_gas_warm_local": "518700",
+      "roundtrip_input_WETH_wei": "100000000000000000",
+      "first_pool": "0xE0554a476A092703abdB3Ef35c80e0D76d32939F",
+      "second_pool": "0xE0554a476A092703abdB3Ef35c80e0D76d32939F"
+    },
+    "testEconomy_5bpThen1bpMorpho": {
+      "route_margin_before_gas_WETH_wei": "-100089065448169",
+      "roundtrip_gas_warm_local": "536477",
+      "roundtrip_input_WETH_wei": "100000000000000000",
+      "first_pool": "0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640",
+      "second_pool": "0xE0554a476A092703abdB3Ef35c80e0D76d32939F"
+    },
+    "testEconomy_5bpThenSame5bpMorpho": {
+      "route_margin_before_gas_WETH_wei": "-99975441405755",
+      "roundtrip_gas_warm_local": "515159",
+      "roundtrip_input_WETH_wei": "100000000000000000",
+      "first_pool": "0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640",
+      "second_pool": "0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640"
+    },
+    "testEconomy_5bpThenV2Morpho": {
+      "route_margin_before_gas_WETH_wei": "-254212108632923",
+      "roundtrip_gas_warm_local": "466993",
+      "roundtrip_input_WETH_wei": "100000000000000000",
+      "first_pool": "0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640",
+      "second_pool": "0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc"
+    },
+    "testMorpho_USDC_100": {
+      "loan_asset": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "principal_raw": "100000000",
+      "loan_gas_warm_local": "160807"
+    },
+    "testMorpho_USDC_10000": {
+      "loan_asset": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "principal_raw": "10000000000",
+      "loan_gas_warm_local": "160807"
+    },
+    "testMorpho_USDC_1000000": {
+      "loan_asset": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "principal_raw": "1000000000000",
+      "loan_gas_warm_local": "160807"
+    },
+    "testMorpho_WETH_001": {
+      "loan_asset": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "principal_raw": "10000000000000000",
+      "loan_gas_warm_local": "151327"
+    },
+    "testMorpho_WETH_1": {
+      "loan_asset": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "principal_raw": "1000000000000000000",
+      "loan_gas_warm_local": "151327"
+    },
+    "testMorpho_WETH_10": {
+      "loan_asset": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "principal_raw": "10000000000000000000",
+      "loan_gas_warm_local": "151327"
+    },
+    "testMorpho_callbackFailureAtomicUsdc": {},
+    "testMorpho_callbackFailureAtomicWeth": {},
+    "testMorpho_excessCashRejected": {},
+    "testMorpho_forgedAndInactiveCallbacksRejected": {},
+    "testMorpho_repaymentFailureAtomicUsdc": {},
+    "testMorpho_repaymentFailureAtomicWeth": {},
+    "testReceiver_ownerAuthentication": {},
+    "testV3_1bpUsdcToWethExactOutputAndPayment": {
+      "swap_pool": "0xE0554a476A092703abdB3Ef35c80e0D76d32939F",
+      "input_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "swap_input_raw": "100000000",
+      "swap_output_raw": "55794221724763267",
+      "sqrtPriceX96_before": "1871533370468770555854501433647912",
+      "sqrtPriceX96_after": "1871519031629882588722148791771232",
+      "initialized_ticks_crossed": "0",
+      "swap_gas_warm_local": "210700"
+    },
+    "testV3_1bpWethToUsdcExactOutputAndPayment": {
+      "swap_pool": "0xE0554a476A092703abdB3Ef35c80e0D76d32939F",
+      "input_token": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "swap_input_raw": "10000000000000000",
+      "swap_output_raw": "17919256",
+      "sqrtPriceX96_before": "1871533370468770555854501433647912",
+      "sqrtPriceX96_after": "1871535940162290936108302867703950",
+      "initialized_ticks_crossed": "0",
+      "swap_gas_warm_local": "208644"
+    },
+    "testV3_5bpUsdcToWethExactOutputAndPayment": {
+      "swap_pool": "0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640",
+      "input_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "swap_input_raw": "100000000",
+      "swap_output_raw": "55793859268485271",
+      "sqrtPriceX96_before": "1871895103178293315213191389697999",
+      "sqrtPriceX96_after": "1871894048487748854183240535994802",
+      "initialized_ticks_crossed": "1",
+      "swap_gas_warm_local": "210711"
+    },
+    "testV3_5bpWethToUsdcExactOutputAndPayment": {
+      "swap_pool": "0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640",
+      "input_token": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "swap_input_raw": "10000000000000000",
+      "swap_output_raw": "17905188",
+      "sqrtPriceX96_before": "1871895103178293315213191389697999",
+      "sqrtPriceX96_after": "1871895292117221901613260226757656",
+      "initialized_ticks_crossed": "1",
+      "swap_gas_warm_local": "208674"
+    },
+    "testV3_canonical1bpIdentity": {},
+    "testV3_canonical5bpIdentity": {},
+    "testV3_exactSingleRangeFee1bp": {
+      "swap_pool": "0xE0554a476A092703abdB3Ef35c80e0D76d32939F",
+      "input_token": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "swap_input_raw": "1000000000000",
+      "swap_output_raw": "1791",
+      "sqrtPriceX96_before": "1871533370468770555854501433647912",
+      "sqrtPriceX96_after": "1871533370725739907892526813791317",
+      "initialized_ticks_crossed": "0",
+      "swap_gas_warm_local": "204644",
+      "exact_fee_WETH_wei": "100000000"
+    },
+    "testV3_exactSingleRangeFee5bp": {
+      "swap_pool": "0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640",
+      "input_token": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "swap_input_raw": "1000000000000",
+      "swap_output_raw": "1790",
+      "sqrtPriceX96_before": "1871895103178293315213191389697999",
+      "sqrtPriceX96_after": "1871895103197187208071831396581704",
+      "initialized_ticks_crossed": "1",
+      "swap_gas_warm_local": "204674",
+      "exact_fee_WETH_wei": "500000000"
+    },
+    "testV3_fabricatedCanonicalGettersRejected": {},
+    "testV3_forgedAndInactiveCallbacksRejected": {},
+    "testV3_initializedTickCrossing": {
+      "swap_pool": "0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640",
+      "input_token": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "swap_input_raw": "100000000000000000000",
+      "swap_output_raw": "178871353537",
+      "sqrtPriceX96_before": "1871895103178293315213191389697999",
+      "sqrtPriceX96_after": "1873784853157525852064765288417991",
+      "initialized_ticks_crossed": "3",
+      "swap_gas_warm_local": "263568"
+    },
+    "testV3_insufficientLiquidityWithinPriceLimitRollsBack": {},
+    "testV3_nonCanonicalPoolRejected": {},
+    "testV3_slippageFailureRollsBack": {},
+    "testV3_underpaymentRollsBack": {}
+  },
+  "approvedForExecution": false
+}

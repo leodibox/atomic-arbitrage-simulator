@@ -1,0 +1,66 @@
+{
+  "chainId": 1,
+  "blockNumber": "26437049",
+  "blockHash": "0x752b8f00acb7b104aca58119d5d9707caa192c68b892884c92b3ca72ca91e653",
+  "blockTimestamp": "1794946007",
+  "providers": {
+    "morpho": {
+      "address": "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb",
+      "documentedFlashFeeBps": 0,
+      "feeWasVerifiedFromContract": false,
+      "cashBalancesRaw": {
+        "WETH": "14119707180402400513058",
+        "USDC": "135638714701115"
+      },
+      "liquidityAvailabilityVerified": false,
+      "callbackIntegrationVerified": false,
+      "approvedForExecution": false
+    },
+    "aave": {
+      "address": "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2",
+      "onchainPremiumBps": "5"
+    }
+  },
+  "uniswapV3Pools": [
+    {
+      "address": "0xe0554a476a092703abdb3ef35c80e0d76d32939f",
+      "feeHundredthBips": 100,
+      "feeBps": 1,
+      "liquidityRaw": "308286723960335127",
+      "status": "IN_RANGE_LIQUIDITY_PRESENT",
+      "feeOnlyScenarios": {
+        "v3ThenV2WithMorphoBps": "31",
+        "v3ThenV2WithAaveBps": "36",
+        "v3ThenV3WithMorphoBps": "2",
+        "v3ThenV3WithAaveBps": "7",
+        "approvedForExecution": false
+      },
+      "approvedForExecution": false
+    },
+    {
+      "address": "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640",
+      "feeHundredthBips": 500,
+      "feeBps": 5,
+      "liquidityRaw": "4191224594395590429",
+      "status": "IN_RANGE_LIQUIDITY_PRESENT",
+      "feeOnlyScenarios": {
+        "v3ThenV2WithMorphoBps": "35",
+        "v3ThenV2WithAaveBps": "40",
+        "v3ThenV3WithMorphoBps": "10",
+        "v3ThenV3WithAaveBps": "15",
+        "approvedForExecution": false
+      },
+      "approvedForExecution": false
+    }
+  ],
+  "assumptions": {
+    "morphoFeeSource": "Morpho Blue official contract docs, NOT an onchain fee getter",
+    "cashBalanceIsNotFlashLoanExecutionProof": true,
+    "v3PriceQuoteVerified": false,
+    "tickCrossingQuoteVerified": false,
+    "actualGasEstimated": false,
+    "netProfitVerified": false,
+    "transactionSubmissionEnabled": false,
+    "approvedForExecution": false
+  }
+}
