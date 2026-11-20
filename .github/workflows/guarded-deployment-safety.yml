@@ -1,0 +1,38 @@
+name: Guarded deployment safety certification
+on:
+  pull_request:
+    paths:
+      - 'contracts/**'
+      - '.github/workflows/guarded-deployment-safety.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  guarded-deploy-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - name: Install test-only forge-std dependency
+        working-directory: contracts
+        run: forge install foundry-rs/forge-std --no-git
+      - name: Compile and test guarded owner/deployment defaults
+        id: checks
+        working-directory: contracts
+        shell: bash
+        run: |
+          set -o pipefail
+          forge test --match-contract GuardedDeploymentSafetyTest -vvv 2>&1 | tee guarded-deployment-test.log
+      - name: Preserve actual forge output, including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: guarded-deployment-safety-log
+          path: contracts/guarded-deployment-test.log
+          if-no-files-found: warn
+          retention-days: 7
