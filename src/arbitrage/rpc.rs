@@ -11,6 +11,7 @@ use std::collections::{HashMap, HashSet};
 sol! {
     #[sol(rpc)]
     interface V2Pair {
+        function factory() external view returns (address);
         function token0() external view returns (address);
         function token1() external view returns (address);
         function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast);
@@ -85,7 +86,7 @@ where
             let provider = provider.clone();
             handles.push(tokio::spawn(async move {
                 let contract = V2Pair::new(pair, provider);
-                let reserves = contract.getReserves().call().await?;
+                let reserves = contract.getReserves().block(block.into()).call().await?;
                 Ok::<_, anyhow::Error>((pair, token0, token1, fee_bps, reserves))
             }));
         }
@@ -134,9 +135,9 @@ where
             let provider = provider.clone();
             handles.push(tokio::spawn(async move {
                 let contract = V3Pool::new(pair, provider);
-                let slot0 = contract.slot0().call().await?;
-                let liq = contract.liquidity().call().await?;
-                let fee = contract.fee().call().await?;
+                let slot0 = contract.slot0().block(block.into()).call().await?;
+                let liq = contract.liquidity().block(block.into()).call().await?;
+                let fee = contract.fee().block(block.into()).call().await?;
                 Ok::<_, anyhow::Error>((pair, token0, token1, fee_bps, slot0, liq, fee))
             }));
         }
@@ -214,4 +215,71 @@ where
         out.insert(token, decimals);
     }
     out
+}
+
+sol! {
+    #[sol(rpc)]
+    interface CanonicalV2Factory {
+        function getPair(address tokenA, address tokenB) external view returns (address);
+    }
+}
+
+/// Resolve only known Ethereum V2 factories and standard WETH markets.
+pub async fn discover_weth_v2<P: Provider<Ethereum> + Clone>(
+    provider: &P,
+    block: u64,
+    min_weth: U256,
+) -> Result<Vec<(Address, Address, Address)>> {
+    use crate::common::constants::{FACTORY_V2, WETH};
+    use alloy::primitives::address;
+
+    anyhow::ensure!(
+        provider.get_chain_id().await? == 1,
+        "V2 discovery requires Ethereum mainnet"
+    );
+    let factories = [
+        FACTORY_V2,
+        address!("C0AEe478e3658e2610c5F7A4A2E1777cE9e4f2Ac"),
+    ];
+    let markets = [
+        address!("A0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"),
+        address!("dAC17F958D2ee523a2206206994597C13D831ec7"),
+        address!("6B175474E89094C44Da98b954EedeAC495271d0F"),
+    ];
+    let mut pools = Vec::new();
+    for factory in factories {
+        let registry = CanonicalV2Factory::new(factory, provider.clone());
+        for token in markets {
+            let pair = registry
+                .getPair(WETH, token)
+                .block(block.into())
+                .call()
+                .await?;
+            if pair.is_zero() {
+                continue;
+            }
+            let contract = V2Pair::new(pair, provider.clone());
+            let token0 = contract.token0().block(block.into()).call().await?;
+            let token1 = contract.token1().block(block.into()).call().await?;
+            let actual_factory = contract.factory().block(block.into()).call().await?;
+            anyhow::ensure!(
+                actual_factory == factory
+                    && ((token0 == WETH && token1 == token) || (token1 == WETH && token0 == token)),
+                "factory or token mismatch for discovered V2 pair {pair}"
+            );
+            let reserves = contract.getReserves().block(block.into()).call().await?;
+            let weth_reserve = if token0 == WETH {
+                reserves.reserve0
+            } else {
+                reserves.reserve1
+            };
+            if !reserves.reserve0.is_zero()
+                && !reserves.reserve1.is_zero()
+                && U256::from(weth_reserve) >= min_weth
+            {
+                pools.push((pair, token0, token1));
+            }
+        }
+    }
+    Ok(pools)
 }

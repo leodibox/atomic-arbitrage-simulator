@@ -3,6 +3,7 @@
 
 pub mod cycles;
 pub mod metrics;
+pub mod net;
 pub mod preflight;
 pub mod rpc;
 pub mod state;

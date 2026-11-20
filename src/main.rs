@@ -158,9 +158,53 @@ where
         .unwrap_or(10);
 
     let block = provider.get_block_number().await?;
-    let initial = load_allowlisted_reserves(&provider, &allowlist, block).await?;
+    let mut initial = load_allowlisted_reserves(&provider, &allowlist, block).await?;
     // Prevent impossible/incorrect pool routes from silently passing discovery.
     verify_allowlisted_tokens(&provider, &initial).await?;
+    let mut expanded_allowlist = allowlist.clone();
+    let mut net_scan = None;
+    if let Ok(gas_units) = std::env::var("SIM_V2_GAS_UNITS") {
+        use alloy::primitives::U256;
+        use sandooo::arbitrage::{net::NetScan, rpc::discover_weth_v2};
+
+        let gas_units = gas_units
+            .parse::<u64>()
+            .context("invalid SIM_V2_GAS_UNITS")?;
+        anyhow::ensure!(gas_units > 0, "SIM_V2_GAS_UNITS must be positive");
+        let min_weth = U256::from(25) * pow10(18);
+        let discovery = async {
+            let pairs = discover_weth_v2(&provider, block, min_weth).await?;
+            let mut expanded = allowlist.clone();
+            for (pair, token0, token1) in &pairs {
+                if initial.get(pair).is_none() && initial.get_v3(pair).is_none() {
+                    expanded.push_str(&format!(";{pair}:{token0}:{token1}:30"));
+                }
+            }
+            let snapshot = load_allowlisted_reserves(&provider, &expanded, block).await?;
+            Ok::<_, anyhow::Error>((pairs, expanded, snapshot))
+        };
+        match tokio::time::timeout(std::time::Duration::from_secs(5), discovery).await {
+            Ok(Ok((pairs, expanded, snapshot))) => {
+                info!(
+                    verified_v2_pairs = pairs.len(),
+                    pools = snapshot.len(),
+                    "canonical Ethereum WETH V2 discovery ready"
+                );
+                expanded_allowlist = expanded;
+                initial = snapshot;
+                net_scan = Some(NetScan {
+                    gas_units,
+                    tip_wei: 2_000_000_000,
+                    slippage_bps: 10,
+                    min_weth,
+                    pairs: pairs.into_iter().map(|(pair, _, _)| pair).collect(),
+                });
+            }
+            Ok(Err(_)) | Err(_) => {
+                warn!("canonical V2 discovery unavailable; using configured allowlist")
+            }
+        }
+    }
     let structural_routes = count_closed_routes(&initial, sim_max_hops);
     if structural_routes == 0 {
         warn!(pools = initial.len(), max_hops = sim_max_hops,
@@ -228,8 +272,42 @@ where
             match provider.get_block_number().await {
                 Ok(b) => {
                     observed_block = observed_block.max(b);
-                    match load_allowlisted_reserves(&provider, &allowlist, b).await {
+                    let refreshed = if expanded_allowlist == allowlist {
+                        load_allowlisted_reserves(&provider, &allowlist, b).await
+                    } else {
+                        match tokio::time::timeout(
+                            std::time::Duration::from_secs(5),
+                            load_allowlisted_reserves(&provider, &expanded_allowlist, b),
+                        )
+                        .await
+                        {
+                            Ok(Ok(fresh)) => Ok(fresh),
+                            _ => {
+                                warn!(
+                                    "expanded V2 refresh unavailable; refreshing configured pools"
+                                );
+                                load_allowlisted_reserves(&provider, &allowlist, b).await
+                            }
+                        }
+                    };
+                    match refreshed {
                         Ok(fresh) => {
+                            if let Some(net_scan) = &net_scan {
+                                let priced = net_scan.report(
+                                    &provider,
+                                    &fresh,
+                                    b,
+                                    sim_min_profit,
+                                    sim_max_hops,
+                                );
+                                if !matches!(
+                                    tokio::time::timeout(std::time::Duration::from_secs(5), priced)
+                                        .await,
+                                    Ok(Ok(()))
+                                ) {
+                                    warn!(block = b, "V2 net estimates unavailable; gas or premium could not be verified");
+                                }
+                            }
                             let mut guard = cache.write().await;
                             if fresh.last_block() >= guard.last_block() {
                                 *guard = fresh;
