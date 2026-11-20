@@ -22,6 +22,7 @@ async function request(url, token, method, body, fetchImpl) {
       method,
       headers: {
         Accept: "application/vnd.github+json",
+        "User-Agent": "SandwichBot-one-shot/1.0",
         Authorization: `Bearer ${token}`,
         "X-GitHub-Api-Version": "2022-11-28",
         ...(body ? {"Content-Type": "application/json"} : {}),
