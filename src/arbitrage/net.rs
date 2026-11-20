@@ -66,24 +66,6 @@ impl NetScan {
         let max_fee_per_gas_wei = U256::from(base_fee) * U256::from(2)
             + U256::from(self.tip_wei);
         let gas = U256::from(self.gas_units) * max_fee_per_gas_wei;
-        // Sample the USD cost ~once per 25 blocks to avoid thousands of extra
-        // RPC calls each day. Observation only; never release a trade signer.
-        // If the oracle fails or is stale, the scanner keeps doing its
-        // existing read-only net work and reports the diagnostic unavailable.
-        if block % 25 == 0 {
-            match super::gas_usd_diagnostic::read_gas_usd_diagnostic(
-                provider, block, self.gas_units, max_fee_per_gas_wei,
-                header.header.timestamp,
-            ).await {
-                Ok((max_usd_e8, quote_age_seconds, within_five_usd)) =>
-                    info!(block, max_usd_e8 = %max_usd_e8, quote_age_seconds,
-                        within_five_usd, enforced_on_sender = false,
-                        "read-only Ethereum ETH/USD gas ceiling (not trading approval)"),
-                Err(error) =>
-                    tracing::warn!(block, %error,
-                        "read-only ETH/USD gas ceiling unavailable; execution remains disabled"),
-            }
-        }
         let aave = AavePremium::new(
             address!("87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2"),
             provider.clone(),
@@ -155,6 +137,38 @@ impl NetScan {
                 }
             }
         }
+        // Counterfactual USD ceilings, sampled on the same cadence as the
+        // existing Chainlink diagnostic. This DOES NOT change the actual
+        // $5 one-shot sender guard, current preflight, gas quote or route set.
+        // Tier counts are subsets of routes already positive after estimated
+        // gas/slippage/Aave premium and accepted by the read-only preflight.
+        // They are NOT confirmed executable trades or proof of missed profits.
+        if block % 25 == 0 {
+            match super::gas_usd_diagnostic::read_gas_usd_diagnostic(
+                provider, block, self.gas_units, max_fee_per_gas_wei,
+                header.header.timestamp,
+            ).await {
+                Ok((max_usd_e8, quote_age_seconds, within_five_usd)) => {
+                    let counts = usd_budget_tier_counts(max_usd_e8, positive.len());
+                    info!(block, max_usd_e8 = %max_usd_e8, quote_age_seconds,
+                        within_five_usd, enforced_on_sender = false,
+                        "read-only Ethereum ETH/USD gas ceiling (not trading approval)");
+                    info!(block, max_usd_e8 = %max_usd_e8,
+                        routes_within_5_usd = counts[0],
+                        routes_within_10_usd = counts[1],
+                        routes_within_15_usd = counts[2],
+                        routes_within_20_usd = counts[3],
+                        additional_routes_5_to_10_usd = counts[1] - counts[0],
+                        additional_routes_10_to_15_usd = counts[2] - counts[1],
+                        additional_routes_15_to_20_usd = counts[3] - counts[2],
+                        positive_after_estimated_costs = positive.len(),
+                        not_execution_approval = true,
+                        "read-only $5/$10/$15/$20 counterfactual gas ceilings");
+                }
+                Err(error) => tracing::warn!(block, %error,
+                    "read-only budget tiers unavailable; no unverified USD comparison"),
+            }
+        }
         info!(block, verified_v2_pools = verified.len(), positive_net_estimates = positive.len(),
             v2_gross_cycles, rejected_by_costs, rejected_by_net_floor,
             rejected_by_preflight, accepted_probe_sizes,
@@ -166,6 +180,18 @@ impl NetScan {
         }
         Ok(())
     }
+}
+
+/// Pure counterfactual on the SAME conservative maxFeePerGas quote and
+/// previously accepted candidate routes. It does not relax any gas gate.
+fn usd_budget_tier_counts(usd_e8: U256, eligible_route_count: usize) -> [usize; 4] {
+    [5u64, 10, 15, 20].map(|cap| {
+        if usd_e8 <= U256::from(cap) * U256::from(100_000_000u64) {
+            eligible_route_count
+        } else {
+            0
+        }
+    })
 }
 
 /// Sample diverse amounts without exceeding the existing flash-loan cap.
@@ -200,6 +226,17 @@ fn conservative_net(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn usd_tiers_are_monotone_and_never_change_the_sender_cap() {
+        assert_eq!(usd_budget_tier_counts(U256::from(499_999_999u64), 3), [3, 3, 3, 3]);
+        assert_eq!(usd_budget_tier_counts(U256::from(500_000_001u64), 3), [0, 3, 3, 3]);
+        assert_eq!(usd_budget_tier_counts(U256::from(1_000_000_001u64), 2), [0, 0, 2, 2]);
+        assert_eq!(usd_budget_tier_counts(U256::from(1_500_000_001u64), 2), [0, 0, 0, 2]);
+        assert_eq!(usd_budget_tier_counts(U256::from(2_000_000_001u64), 2), [0, 0, 0, 0]);
+        assert_eq!(usd_budget_tier_counts(U256::from(600_000_000u64), 0), [0, 0, 0, 0]);
+        assert_eq!(super::super::one_shot::MAX_TOTAL_GAS_USD_E8, 500_000_000);
+    }
 
     #[test]
     fn weth_probe_amounts_cover_middle_sizes_within_existing_cap() {
