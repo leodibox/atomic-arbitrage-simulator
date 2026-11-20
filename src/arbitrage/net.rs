@@ -63,8 +63,27 @@ impl NetScan {
             .header
             .base_fee_per_gas
             .context("missing Ethereum base fee")?;
-        let gas = U256::from(self.gas_units)
-            * (U256::from(base_fee) * U256::from(2) + U256::from(self.tip_wei));
+        let max_fee_per_gas_wei = U256::from(base_fee) * U256::from(2)
+            + U256::from(self.tip_wei);
+        let gas = U256::from(self.gas_units) * max_fee_per_gas_wei;
+        // Sample the USD cost ~once per 25 blocks to avoid thousands of extra
+        // RPC calls each day. Observation only; never release a trade signer.
+        // If the oracle fails or is stale, the scanner keeps doing its
+        // existing read-only net work and reports the diagnostic unavailable.
+        if block % 25 == 0 {
+            match super::gas_usd_diagnostic::read_gas_usd_diagnostic(
+                provider, block, self.gas_units, max_fee_per_gas_wei,
+                header.header.timestamp,
+            ).await {
+                Ok((max_usd_e8, quote_age_seconds, within_five_usd)) =>
+                    info!(block, max_usd_e8 = %max_usd_e8, quote_age_seconds,
+                        within_five_usd, enforced_on_sender = false,
+                        "read-only Ethereum ETH/USD gas ceiling (not trading approval)"),
+                Err(error) =>
+                    tracing::warn!(block, %error,
+                        "read-only ETH/USD gas ceiling unavailable; execution remains disabled"),
+            }
+        }
         let aave = AavePremium::new(
             address!("87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2"),
             provider.clone(),
