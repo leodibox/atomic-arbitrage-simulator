@@ -33,7 +33,7 @@ Until those checks pass, the **only safe deployed state** is read-only scanning.
 
 ## Dedicated persistent attempt ledger — implementation contract
 
-The SQL migration file `sql/first_live_trade_attempt.sql` uses a single immutable primary key (`first_live_trial`) and `INSERT ... ON CONFLICT DO NOTHING RETURNING attempt_id`. It protects at-most-one **only** if:
+The SQL migration file `sql/first_live_trade_attempt.sql` also uses a database trigger to reject stale/future ETH/USD quotes and independently recompute maximum gas cost in USD with a 10% safety margin (it is not an oracle). It uses a single immutable primary key (`first_live_trial`) and `INSERT ... ON CONFLICT DO NOTHING RETURNING attempt_id`. It protects at-most-one **only** if:
 
 - the exact signed transaction has already passed all simulation and price checks;
 - a dedicated PostgreSQL database stores the row durably;
@@ -56,3 +56,17 @@ Before any live activation, require a *real* positive-net candidate with current
 5. A test that a profitable positive in mocks cannot bypass the above, and a real unprofitable route is rejected; no relaxed conditions in production.
 
 No profitable candidate or deployed Guarded executor has been verified as of this document. Do not fabricate an address or interpret fork-only synthetic profits as revenue.
+
+
+## Isolated database test (NOT run yet)
+
+Run locally only with a **disposable database** whose name starts with `sandwich_bot_test_`, a separate test-admin PostgreSQL role, and a privately supplied `PGHOST`/`PGPORT`/`PGUSER`/`PGPASSWORD`:
+
+```sh
+export SANDWICH_TEST_DB_NAME=sandwich_bot_test_local
+node scripts/test_one_shot_ledger.mjs
+```
+
+The Node test requires the `psql` command; it will refuse other database names. It applies the migration and **TRUNCATEs** the attempt/receipt tables in that disposable database only. Its checks cover two concurrent reservations, persistence across separate sessions, rejection of a second attempt, mismatched/over-$5 quoted fee, stale/future quote, and one accepted reservation. This test has not been executed in the connected environment because there is no approved dedicated disposable Sandwich Bot PostgreSQL instance or local `psql` binary.
+
+The Rust risk policy was corrected to perform `assess_before_reservation` prior to consuming the quota, and `assess_after_reservation` only after an independently verified committed singleton reservation. The coordinator must match the persisted row to the exact calldata/nonce/sender and MUST NOT trust a user-provided boolean as proof of DB durability.
