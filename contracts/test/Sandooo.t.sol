@@ -11,12 +11,23 @@ contract SandoooTest is Test {
     address pair = 0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc;
     address weth = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
+    bool private forkReady;
+
+    modifier mainnetFork() {
+        if (!forkReady) vm.skip(true);
+        _;
+    }
+
     function setUp() public {
-        vm.createSelectFork(vm.envString("HTTPS_URL"));
+        string memory rpc = vm.envOr("HTTPS_URL", string(""));
+        if (bytes(rpc).length == 0) return;
+        vm.createSelectFork(rpc);
+        assertEq(block.chainid, 1, "fork must point to Ethereum Mainnet");
+        forkReady = true;
         s = new Sandooo();
     }
 
-    function test_staleBlockReverts() public {
+    function test_staleBlockReverts() public mainnetFork {
         bytes memory bad = abi.encodePacked(uint64(block.number - 1));
         vm.prank(address(this));
         (bool ok,) = address(s).call(bad);
