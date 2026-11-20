@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS sandwich_bot.first_live_trade_attempt (
 -- It is not an ETH/USD oracle: the quote still MUST be independently verified.
 -- Use clock_timestamp() in a trigger, not a volatile CHECK constraint.
 CREATE OR REPLACE FUNCTION sandwich_bot.first_live_trade_validate_budget()
-RETURNS trigger LANGUAGE plpgsql AS $
+RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE
     computed_usd_e8 NUMERIC;
 BEGIN
@@ -63,7 +63,7 @@ BEGIN
         RAISE EXCEPTION 'worst-case gas cost exceeds or mismatches $5 USD budget';
     END IF;
     RETURN NEW;
-END $;
+END $$;
 
 DROP TRIGGER IF EXISTS first_live_trade_budget_on_insert ON sandwich_bot.first_live_trade_attempt;
 CREATE TRIGGER first_live_trade_budget_on_insert
