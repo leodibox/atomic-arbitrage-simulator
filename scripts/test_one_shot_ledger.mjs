@@ -17,7 +17,7 @@ if (!/^sandwich_bot_test_[a-z0-9_]+$/.test(testDb)) {
   process.exit(2);
 }
 const psql = "psql";
-const args = ["-X", "-v", "ON_ERROR_STOP=1", "-A", "-t", "-d", testDb];
+const args = ["-X", "-v", "ON_ERROR_STOP=1", "-q", "-A", "-t", "-d", testDb];
 function sqlNow(secondsOffset = 0) {
   return `CURRENT_TIMESTAMP + INTERVAL '${secondsOffset} seconds'`;
 }
