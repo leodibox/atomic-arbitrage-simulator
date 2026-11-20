@@ -24,10 +24,6 @@ pub struct OneShotCheck {
     pub max_fee_per_gas_wei: U256,
     pub eth_usd_e8: U256,
     pub price_age_seconds: u64,
-    /// Confirmed persisted number of submission attempts under this budget.
-    pub previous_attempts: u64,
-    /// Only true after an EXCLUSIVE, DURABLE attempt reservation was acquired.
-    pub durable_attempt_reserved: bool,
     pub exact_sender_simulation_succeeded: bool,
     pub nonce_and_contract_verified: bool,
     pub onchain_pair_and_loan_caps_verified: bool,
@@ -59,13 +55,12 @@ pub fn maximum_gas_cost_usd_e8(
     Ok(rounded_up)
 }
 
-/// Assessment only. This does NOT make a reservation or authorize a signer.
-/// The caller must independently atomically reserve/consume the only attempt.
-pub fn assess_one_shot(check: &OneShotCheck) -> Result<U256> {
+/// Pre-reservation assessment. NEVER consumes an attempt. A live coordinator
+/// must complete all expensive checks (including exact sender simulation) before
+/// acquiring the single-use reservation; this only checks supplied evidence.
+pub fn assess_before_reservation(check: &OneShotCheck) -> Result<U256> {
     ensure!(check.chain_id == 1, "only Ethereum mainnet is supported");
     ensure!(check.price_age_seconds <= MAX_PRICE_AGE_SECONDS, "ETH/USD quote is stale");
-    ensure!(check.previous_attempts == 0, "one-shot gas budget already consumed");
-    ensure!(check.durable_attempt_reserved, "durable one-shot reservation missing");
     ensure!(check.exact_sender_simulation_succeeded, "exact transaction simulation missing or failed");
     ensure!(check.nonce_and_contract_verified, "nonce, owner, pause or contract identity unverified");
     ensure!(check.onchain_pair_and_loan_caps_verified, "pair/loan cap unverified");
@@ -81,6 +76,29 @@ pub fn assess_one_shot(check: &OneShotCheck) -> Result<U256> {
     Ok(worst_usd_e8)
 }
 
+/// Final post-commit gate: caller must supply proof that the *exact* candidate
+/// (calldata hash, sender, nonce and fee cap) has been atomically reserved as the
+/// one and only durable row, and that its commit succeeded. A boolean is never
+/// acceptable evidence from an untrusted caller; the execution coordinator must
+/// compare the row returned by an independent DB read against these values.
+///
+/// Fail CLOSED for ambiguous DB commits or mismatches, do not retry.
+pub fn assess_after_reservation(
+    check: &OneShotCheck,
+    reservation_committed_and_exact: bool,
+    persisted_attempt_count: u64,
+) -> Result<U256> {
+    ensure!(
+        reservation_committed_and_exact,
+        "committed exact durable reservation missing"
+    );
+    ensure!(
+        persisted_attempt_count == 1,
+        "one-shot reservation must be the sole persistent attempt"
+    );
+    assess_before_reservation(check)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -92,8 +110,6 @@ mod tests {
             max_fee_per_gas_wei: U256::from(10_000_000_000u64),
             eth_usd_e8: U256::from(300_000_000_000u64),
             price_age_seconds: 5,
-            previous_attempts: 0,
-            durable_attempt_reserved: true,
             exact_sender_simulation_succeeded: true,
             nonce_and_contract_verified: true,
             onchain_pair_and_loan_caps_verified: true,
@@ -104,47 +120,49 @@ mod tests {
     #[test]
     fn accepts_less_than_five_dollars_with_buffer() {
         // 100,000 gas × 10 gwei = .001 ETH = $3; +10% buffer = $3.30.
-        assert_eq!(assess_one_shot(&permitted()).unwrap(), U256::from(330_000_000u64));
+        assert_eq!(assess_before_reservation(&permitted()).unwrap(), U256::from(330_000_000u64));
     }
 
     #[test]
     fn rejects_gas_over_five_dollars() {
         let mut check = permitted();
         check.max_fee_per_gas_wei = U256::from(20_000_000_000u64);
-        assert!(assess_one_shot(&check).is_err());
+        assert!(assess_before_reservation(&check).is_err());
     }
 
     #[test]
-    fn rejects_second_attempt_and_missing_durable_lock() {
-        let mut check = permitted();
-        check.previous_attempts = 1;
-        assert!(assess_one_shot(&check).is_err());
-        check.previous_attempts = 0;
-        check.durable_attempt_reserved = false;
-        assert!(assess_one_shot(&check).is_err());
+    fn checks_before_reserving_then_requires_exact_committed_row() {
+        let check = permitted();
+        // Preflight must not consume a one-shot quota.
+        assert!(assess_before_reservation(&check).is_ok());
+        // Submission blocked without committed, exact durable evidence.
+        assert!(assess_after_reservation(&check, false, 0).is_err());
+        assert!(assess_after_reservation(&check, true, 0).is_err());
+        assert!(assess_after_reservation(&check, true, 2).is_err());
+        assert!(assess_after_reservation(&check, true, 1).is_ok());
     }
 
     #[test]
     fn rejects_stale_price_and_missing_simulation() {
         let mut check = permitted();
         check.price_age_seconds = 31;
-        assert!(assess_one_shot(&check).is_err());
+        assert!(assess_before_reservation(&check).is_err());
         check.price_age_seconds = 5;
         check.exact_sender_simulation_succeeded = false;
-        assert!(assess_one_shot(&check).is_err());
+        assert!(assess_before_reservation(&check).is_err());
     }
 
     #[test]
     fn rejects_unverified_or_unprofitable_routes() {
         let mut check = permitted();
         check.route_profitable_after_all_costs = false;
-        assert!(assess_one_shot(&check).is_err());
+        assert!(assess_before_reservation(&check).is_err());
         check.route_profitable_after_all_costs = true;
         check.nonce_and_contract_verified = false;
-        assert!(assess_one_shot(&check).is_err());
+        assert!(assess_before_reservation(&check).is_err());
         check.nonce_and_contract_verified = true;
         check.onchain_pair_and_loan_caps_verified = false;
-        assert!(assess_one_shot(&check).is_err());
+        assert!(assess_before_reservation(&check).is_err());
     }
 
     #[test]
@@ -158,10 +176,20 @@ mod tests {
     }
 
     #[test]
+    fn committed_reservation_cannot_bypass_profit_or_price_checks() {
+        let mut check = permitted();
+        check.route_profitable_after_all_costs = false;
+        assert!(assess_after_reservation(&check, true, 1).is_err());
+        check.route_profitable_after_all_costs = true;
+        check.price_age_seconds = 31;
+        assert!(assess_after_reservation(&check, true, 1).is_err());
+    }
+
+    #[test]
     fn rejects_overflow_and_wrong_chain() {
         assert!(maximum_gas_cost_usd_e8(u64::MAX, U256::MAX, U256::MAX).is_err());
         let mut check = permitted();
         check.chain_id = 8453;
-        assert!(assess_one_shot(&check).is_err());
+        assert!(assess_before_reservation(&check).is_err());
     }
 }
