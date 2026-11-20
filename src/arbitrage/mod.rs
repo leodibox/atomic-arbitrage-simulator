@@ -4,6 +4,7 @@
 pub mod cycles;
 pub mod metrics;
 pub mod net;
+pub mod one_shot;
 pub mod preflight;
 pub mod rpc;
 pub mod state;
