@@ -29,8 +29,8 @@ contract GuardedDeploymentSafetyTest is Test {
     function testDeploymentRemainsUnarmedAndCannotBeUnpausedByStranger() public {
         FlashLoanArbGuarded guarded = _deployAsWallet();
         address outsider = address(0xBEEF);
-        vm.prank(outsider);
         vm.expectRevert(FlashLoanArbGuarded.NotOwner.selector);
+        vm.prank(outsider);
         guarded.setPaused(false);
         assertTrue(guarded.paused());
         assertEq(guarded.maxLoanRaw(address(0xCAFE)), 0);
