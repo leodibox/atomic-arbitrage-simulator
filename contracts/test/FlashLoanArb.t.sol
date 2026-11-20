@@ -31,8 +31,19 @@ contract FlashLoanArbTest is Test {
     FlashLoanArb arb;
     address owner;
 
+    bool private forkReady;
+
+    modifier mainnetFork() {
+        if (!forkReady) vm.skip(true);
+        _;
+    }
+
     function setUp() public {
-        vm.createSelectFork(vm.envString("HTTPS_URL"));
+        string memory rpc = vm.envOr("HTTPS_URL", string(""));
+        if (bytes(rpc).length == 0) return;
+        vm.createSelectFork(rpc);
+        assertEq(block.chainid, 1, "fork must point to Ethereum Mainnet");
+        forkReady = true;
         owner = address(this);
         arb = new FlashLoanArb(POOL, PROFIT_RECIPIENT);
     }
@@ -44,48 +55,48 @@ contract FlashLoanArbTest is Test {
     /// Successful repayment: real mainnet pool, real gap block. Use a historical
     /// block where a price gap existed; here we just verify the callback plumbing
     /// by checking the contract reverts cleanly on unprofitable (no gap) paths.
-    function test_unprofitableReverts() public {
+    function test_unprofitableReverts() public mainnetFork {
         // No price gap at this block → arb loses money → Unprofitable revert.
         vm.expectRevert(FlashLoanArb.Unprofitable.selector);
         arb.executeArbitrage(USDC, 10_000e6, _path(UNI_PAIR, 1, SUSHI_PAIR, 0), 1);
     }
 
-    function test_unauthorizedCallerReverts() public {
+    function test_unauthorizedCallerReverts() public mainnetFork {
         vm.prank(address(0xBEEF));
         vm.expectRevert(FlashLoanArb.NotOwner.selector);
         arb.executeArbitrage(USDC, 1_000e6, _path(UNI_PAIR, 1, SUSHI_PAIR, 0), 1);
     }
 
-    function test_unauthorizedExecuteOperationReverts() public {
+    function test_unauthorizedExecuteOperationReverts() public mainnetFork {
         vm.prank(address(0xBEEF));
         vm.expectRevert(FlashLoanArb.NotPool.selector);
         arb.executeOperation(USDC, 1_000e6, 5e4, address(arb), abi.encode(_path(UNI_PAIR, 1, SUSHI_PAIR, 0), uint256(1)));
     }
 
-    function test_badPathReverts() public {
+    function test_badPathReverts() public mainnetFork {
         vm.expectRevert(FlashLoanArb.BadPath.selector);
         arb.executeArbitrage(USDC, 1_000e6, hex"deadbeef", 1);
     }
 
-    function test_ownerIsDeployer() public view {
+    function test_ownerIsDeployer() public mainnetFork {
         assertEq(arb.owner(), owner);
     }
 
-    function test_poolAddress() public view {
+    function test_poolAddress() public mainnetFork {
         assertEq(address(arb.pool()), POOL);
     }
 
-    function test_profitRecipient() public view {
+    function test_profitRecipient() public mainnetFork {
         assertEq(arb.profitRecipient(), PROFIT_RECIPIENT);
     }
 
-    function test_sweepUnauthorizedReverts() public {
+    function test_sweepUnauthorizedReverts() public mainnetFork {
         vm.prank(address(0xBEEF));
         vm.expectRevert(FlashLoanArb.NotOwner.selector);
         arb.sweep(USDC, 1);
     }
 
-    function test_zeroProfitRecipientReverts() public {
+    function test_zeroProfitRecipientReverts() public mainnetFork {
         vm.expectRevert(FlashLoanArb.ZeroAddress.selector);
         new FlashLoanArb(POOL, address(0));
     }
