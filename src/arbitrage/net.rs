@@ -108,7 +108,17 @@ impl NetScan {
         // cycle can be missed by only probing 0.25, 0.025 and 0.0025 WETH.
         // All probes remain <= the existing max_flash_loan; this is
         // discovery-only and does NOT authorize execution or change gas.
-        for amount in v2_weth_probe_amounts(loan_cap) {
+        let mut probe_amounts = v2_weth_probe_amounts(loan_cap);
+        // Pool-specific optimization complements the legacy sizes: short-lived
+        // V2/V2 spreads can peak between fixed sample amounts. No new RPCs.
+        // All candidates are still checked by the SAME conservative net and
+        // execution preflight gates; this is NOT a transaction.
+        for amount in optimal_two_hop_v2_sizes(&verified, loan_cap) {
+            if !probe_amounts.contains(&amount) {
+                probe_amounts.push(amount);
+            }
+        }
+        for amount in probe_amounts {
             for cycle in find_cycles(&verified, &[WETH], amount, limits.max_hops, U256::ZERO) {
                 v2_gross_cycles += 1;
                 let Some(net) = conservative_net(
@@ -180,6 +190,94 @@ impl NetScan {
         }
         Ok(())
     }
+}
+
+/// Find a bounded, approximately gross-profit-maximizing WETH loan for each
+/// *ordered* pair of compatible V2 pools trading the same intermediate token.
+/// This is a discovery-only local arithmetic filter (no eth_call, no signer).
+/// The net/pricing/preflight checks remain the authority for eligibility.
+///
+/// A two-leg constant-product route's signed gross profit is unimodal with
+/// respect to input amount (ignoring integer rounding). A bounded integer
+/// ternary search suffices to pick one extra promising size, without adding
+/// a dependency or guessing loan sizes. Exact output uses PoolState.quote.
+fn optimal_two_hop_v2_sizes(cache: &ReserveCache, loan_cap: U256) -> Vec<U256> {
+    if loan_cap.is_zero() {
+        return Vec::new();
+    }
+    let mut by_token: HashMap<Address, Vec<&super::state::PoolState>> = HashMap::new();
+    for pool in cache.values() {
+        let other = if pool.token0 == WETH {
+            pool.token1
+        } else if pool.token1 == WETH {
+            pool.token0
+        } else {
+            continue;
+        };
+        if other != WETH && !pool.reserve0.is_zero() && !pool.reserve1.is_zero() {
+            by_token.entry(other).or_default().push(pool);
+        }
+    }
+    let mut best_sizes = Vec::new();
+    for (other, pools) in by_token {
+        for (i, first) in pools.iter().enumerate() {
+            for (j, second) in pools.iter().enumerate() {
+                if i == j || first.pair == second.pair {
+                    continue;
+                }
+                // Both arms must be the same ordered WETH→token→WETH cycle.
+                let output = |amount: U256| -> Option<U256> {
+                    let (token, mid) = first.quote(WETH, amount)?;
+                    if token != other { return None; }
+                    let (end, back) = second.quote(other, mid)?;
+                    (end == WETH).then_some(back)
+                };
+                let mut lo = U256::from(1u64);
+                let mut hi = loan_cap;
+                // Fixed iteration bound; no RPC or unbounded search.
+                for _ in 0..128 {
+                    if hi <= lo + U256::from(4u64) { break; }
+                    let step = (hi - lo) / U256::from(3u64);
+                    if step.is_zero() { break; }
+                    let a = lo + step;
+                    let b = hi - step;
+                    let oa = output(a).unwrap_or_default();
+                    let ob = output(b).unwrap_or_default();
+                    // Compare signed gross profit without constructing a signed U256.
+                    // oa-a vs ob-b  <=>  oa+b vs ob+a.
+                    let left = oa.checked_add(b);
+                    let right = ob.checked_add(a);
+                    match (left, right) {
+                        (Some(l), Some(r)) if l < r => lo = a,
+                        (Some(l), Some(r)) if l > r => hi = b,
+                        (Some(_), Some(_)) => { lo = a; hi = b; },
+                        _ => { break; } // fail closed on numerical overflow
+                    }
+                }
+                // Integer rounding can shift the argmax a few wei.
+                let mut winner = None;
+                let mut best = U256::ZERO;
+                let mut candidate = lo;
+                for _ in 0..=8 {
+                    if candidate > hi || candidate > loan_cap { break; }
+                    if let Some(out) = output(candidate) {
+                        let gross = out.saturating_sub(candidate);
+                        if gross > best {
+                            best = gross;
+                            winner = Some(candidate);
+                        }
+                    }
+                    candidate += U256::from(1u64);
+                }
+                if let Some(amount) = winner {
+                    if !best_sizes.contains(&amount) {
+                        best_sizes.push(amount);
+                    }
+                }
+            }
+        }
+    }
+    best_sizes
 }
 
 /// Pure counterfactual on the SAME conservative maxFeePerGas quote and
