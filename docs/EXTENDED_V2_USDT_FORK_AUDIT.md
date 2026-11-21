@@ -1,6 +1,6 @@
 # USDT positive-path + additional V2 coverage + $5 gas audit
 
-Status: **READY FOR LOCAL FOUNDRY EXECUTION; RESULTS NOT YET CERTIFIED**.
+Status: **OWNER-RUN FOUNDRY FORK CERTIFIED: 3 PASS, 0 FAIL, 0 SKIP (2026-11-20)**.
 This branch adds **two fork test files plus this documentation only**.
 No changes to Solidity production contract, Rust scanner, allowlists,
 USDT exclusion, transaction sender, wallet, database, Render or $5 cap.
@@ -91,3 +91,61 @@ after confirming verified pair identities, enough fresh liquidity
 and estimated net margin, and separately reviewing token transfer
 compatibility. No profitable path implies no USDT authorization or
 runtime configuration change.
+
+## Owner-run fork results, November 20, 2026
+
+Owner used Foundry 1.9.0 + Solidity 0.8.24 against
+`https://ethereum-rpc.publicnode.com` with no fixed historical block.
+Both suites compiled and passed, **0 failures / 0 skipped**.
+
+**Positive-path real asset and Aave integration, fork block 26459944**
+- Real USDT loan: 10,000 USDT, premium 5 USDT, synthetic V2 reserves
+  produced **9,298.953512 USDT** retained inside Guarded after
+  successful real Aave repayment; 416161 locally measured gas units.
+- Real WETH loan: 0.1 WETH, premium 0.00005 WETH, synthetic V2 reserves
+  produced **0.098593599043823469 WETH** retained after repayment;
+  402285 locally measured gas units.
+- Tests asserted actual Aave aToken receives the premium, full repayment,
+  no residual Aave allowance, recipient balance unchanged, profit retained.
+- The huge positive figures are **fabricated by the synthetic AMM
+  reserves, NOT observed market profit**, cannot be used as live routes
+  and are not net of gas.
+
+**Additional real V2 market read-only coverage, fork block 26459945**
+All 5 tokens checked against real Ethereum Uniswap V2 and SushiSwap V2
+factory, pair, token ordering, and reserves.
+
+| Token | Uniswap WETH | SushiSwap WETH | both >=25 WETH? |
+|---|---:|---:|---|
+| AAVE | 16.439081280199098417 | 3.062680973842038898 | No |
+| LDO | 2.459116709174439238 | 6.062193477141781914 | No |
+| CRV | 20.018318761051798548 | 3.083758306438470128 | No |
+| SHIB | 113.036287228653660182 | 0.437328650525245480 | No |
+| PEPE | 6908.986217645945553077 | no Sushi pair | No |
+
+9 real pairs discovered; 0 token markets have two pools above 25 WETH.
+0 gross-positive comparisons and 0 net-positive comparisons **because
+no markets met the pair-pair liquidity eligibility requirement**.
+Thus zero opportunities in this experiment are *not evidence* that
+higher budget prevents success or that no other route exists.
+
+**Conservative cost comparison at same fork block**
+- Chainlink ETH/USD quote age: 2136 seconds (diagnostic-only).
+- Conservative maximum gas in ETH: `2230420120000000 wei` (~0.00223042012 ETH).
+- Conservative USD gas ceiling with 10% buffer:
+  `397478040` USD-e8 = **$3.97478040**.
+- Within real sender hard $5 cap: true.
+- Positive-net candidates under each $5, $10, $15, $20 ceiling:
+  **0 / 0 / 0 / 0**.
+- Gas estimate uses 1 million units. Reported test `gasleft()`
+  consumption is a separate local measurement, not actual transaction
+  spend or proof of an exact production gas limit.
+
+**Certification decision**
+USDT integration is technically viable with the Guarded contract
+on fork using synthetic pairs and real asset/Aave token interactions,
+but mainnet profitability and exact sender simulation remain
+unproven. No production scanner inclusion yet. All code in this PR
+is tests and documentation only; preserve original hard $5 gate,
+USDT execution restriction, owner/operator controls, and disable
+all mainnet deployment and trading.
