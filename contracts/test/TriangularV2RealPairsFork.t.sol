@@ -168,42 +168,53 @@ contract TriangularV2RealPairsForkTest is Test {
         return total;
     }
 
+    /// Keep each cross-market combination scoped to reduce Solidity stack
+    /// pressure without modifying pool discovery or three-hop quote logic.
+    function _auditMarketPair(
+        address tokenA, address tokenB, Cost memory cost, Result memory total
+    ) private returns (Result memory) {
+        address[2] memory factories = [UNI, SUSHI];
+        Pair[2] memory wethA;
+        Pair[2] memory wethB;
+        Pair[2] memory cross;
+        for (uint256 f; f < 2; ++f) {
+            wethA[f] = _pair(factories[f], WETH, tokenA);
+            wethB[f] = _pair(factories[f], WETH, tokenB);
+            cross[f] = _pair(factories[f], tokenA, tokenB);
+            if (cross[f].addr != address(0)) total.pairsFound++;
+            emit log_named_address("cross_token_A", tokenA);
+            emit log_named_address("cross_token_B", tokenB);
+            emit log_named_address("cross_pair_or_zero", cross[f].addr);
+            emit log_named_uint("cross_pair_nonzero", cross[f].nonzero ? 1 : 0);
+        }
+        for (uint256 a; a < 2; ++a) {
+            for (uint256 b; b < 2; ++b) {
+                for (uint256 d; d < 2; ++d) {
+                    total = _count(
+                        wethA[a], cross[b], wethB[d],
+                        tokenA, tokenB, cost, total
+                    );
+                    total = _count(
+                        wethB[a], cross[b], wethA[d],
+                        tokenB, tokenA, cost, total
+                    );
+                }
+            }
+        }
+        return total;
+    }
+
     function testFork_realCrossTokenTrianglesAndFiveDollarCap() public {
         _fork();
         (uint256 gasWei, uint256 usdGas) = _maxGasUsd();
         uint256 premium = ITriangleAave(AAVE).FLASHLOAN_PREMIUM_TOTAL();
         assertTrue(premium >= 1 && premium <= 1000, "invalid Aave fee");
-        address[4] memory markets = [USDC, DAI, WBTC, LINK];
-        address[2] memory factories = [UNI, SUSHI];
         Result memory total;
         Cost memory cost = Cost(premium, gasWei, usdGas);
-        // Cross-token pools plus WETH spokes. Six token combinations;
-        // 2x2x2 factory combinations, both cyclic orientations each.
+        address[4] memory markets = [USDC, DAI, WBTC, LINK];
         for (uint256 i; i < markets.length; ++i) {
             for (uint256 j = i + 1; j < markets.length; ++j) {
-                Pair[2] memory wA;
-                Pair[2] memory wB;
-                Pair[2] memory ab;
-                for (uint256 f; f < 2; ++f) {
-                    wA[f] = _pair(factories[f], WETH, markets[i]);
-                    wB[f] = _pair(factories[f], WETH, markets[j]);
-                    ab[f] = _pair(factories[f], markets[i], markets[j]);
-                    if (ab[f].addr != address(0)) total.pairsFound++;
-                    emit log_named_address("cross_token_A", markets[i]);
-                    emit log_named_address("cross_token_B", markets[j]);
-                    emit log_named_address("cross_pair_or_zero", ab[f].addr);
-                    emit log_named_uint("cross_pair_nonzero", ab[f].nonzero ? 1 : 0);
-                }
-                for (uint256 a; a < 2; ++a) {
-                    for (uint256 b; b < 2; ++b) {
-                        for (uint256 c; c < 2; ++c) {
-                            total = _count(wA[a], ab[b], wB[c],
-                                markets[i], markets[j], cost, total);
-                            total = _count(wB[a], ab[b], wA[c],
-                                markets[j], markets[i], cost, total);
-                        }
-                    }
-                }
+                total = _auditMarketPair(markets[i], markets[j], cost, total);
             }
         }
         emit log_named_uint("fork_block", block.number);
