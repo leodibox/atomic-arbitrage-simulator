@@ -4,7 +4,7 @@ use alloy::rpc::types::Filter;
 use alloy::transports::ws::WsConnect;
 use sandooo::arbitrage::{
     find_cycles,
-    net::NetScan,
+    net::{largest_eligible_weth_v2_gap_bps, NetScan},
     preflight::supports_legacy_v2_pool,
     rpc::{
         discover_weth_v2, load_allowlisted_reserves, load_token_decimals, verify_allowlisted_tokens,
@@ -519,15 +519,35 @@ where
             "arbitrage discovery (gross candidates only; V2 compatibility counted, not live-trade signals)"
         );
 
-        // Only gross V2-compatible candidates from a real Sync notification
-        // can trigger this extra RPC pass. The cache may mix block ages, so
-        // NEVER price it directly: fetch all pairs at one pinned block first.
-        // One request per block, bounded by five seconds. Read only.
-        if triggered_by_sync && v2_compatible_gross_candidates > 0
+        // A Sync event can reveal a market price dislocation even when the
+        // fixed gross-size probes miss the profitable amount. Inspect only
+        // verified, executable V2 pools with the same WETH/token topology.
+        // This is a *marginal* price spread, NOT profit after two pool fees,
+        // market impact, Aave, slippage or gas. A gap merely authorizes a
+        // bounded, read-only SAME-BLOCK net screen, never a transaction.
+        let gap_bps = if triggered_by_sync {
+            let guard = cache.read().await;
+            net_scan.as_ref().and_then(|scan| {
+                largest_eligible_weth_v2_gap_bps(
+                    &guard, &scan.pairs, scan.min_weth,
+                )
+            })
+        } else {
+            None
+        };
+        // Two canonical 30-bps V2 swaps incur ~60 bps of swap fees before
+        // gas. Require an observable >65 bps marginal dislocation to avoid
+        // fetching a new snapshot for normal synchronized pool noise.
+        let significant_gap = gap_bps.is_some_and(|bps| bps >= 65);
+        if triggered_by_sync
+            && (v2_compatible_gross_candidates > 0 || significant_gap)
             && last_event_net_screen_block != Some(block)
         {
-            last_event_net_screen_block = Some(block);
             if let Some(net_scan) = net_scan.as_ref() {
+                last_event_net_screen_block = Some(block);
+                info!(block, ?gap_bps, significant_gap,
+                    v2_compatible_gross_candidates,
+                    "Sync event suggests V2 price movement; rechecking pinned net economics (not a trade)");
                 let fresh_head = provider.get_block_number().await;
                 match fresh_head {
                     Ok(head) if head == block => {

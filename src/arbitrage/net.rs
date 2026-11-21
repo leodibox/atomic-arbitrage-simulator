@@ -280,6 +280,64 @@ fn optimal_two_hop_v2_sizes(cache: &ReserveCache, loan_cap: U256) -> Vec<U256> {
     best_sizes
 }
 
+/// Largest fee-excluded, marginal WETH/token spot-price gap between two
+/// *canonical and execution-compatible* V2 pools for the same token.
+/// The ratio is reserve-based and dimensionless (token decimals cancel).
+/// It is a trigger to recheck pinned state, never a profit estimate.
+pub fn largest_eligible_weth_v2_gap_bps(
+    cache: &ReserveCache,
+    canonical_pairs: &HashSet<Address>,
+    min_weth: U256,
+) -> Option<u64> {
+    let mut by_token: HashMap<Address, Vec<(U256, U256)>> = HashMap::new();
+    for pool in cache.values() {
+        if !canonical_pairs.contains(&pool.pair)
+            || !supports_legacy_v2_pool(pool)
+            || pool.reserve0.is_zero()
+            || pool.reserve1.is_zero()
+        {
+            continue;
+        }
+        let (other, weth_reserve, token_reserve) = if pool.token0 == WETH {
+            (pool.token1, pool.reserve0, pool.reserve1)
+        } else if pool.token1 == WETH {
+            (pool.token0, pool.reserve1, pool.reserve0)
+        } else {
+            continue;
+        };
+        if other == WETH || weth_reserve < min_weth {
+            continue;
+        }
+        by_token.entry(other).or_default().push((weth_reserve, token_reserve));
+    }
+
+    let mut best: Option<u64> = None;
+    for pools in by_token.values() {
+        for i in 0..pools.len() {
+            for j in (i + 1)..pools.len() {
+                let (wa, ta) = pools[i];
+                let (wb, tb) = pools[j];
+                // For uint112 canonical reserves, products fit in 224 bits.
+                // checked arithmetic also fails closed for unexpected input.
+                let (Some(left), Some(right)) =
+                    (ta.checked_mul(wb), tb.checked_mul(wa))
+                else { continue };
+                let lower = left.min(right);
+                if lower.is_zero() { continue; }
+                let spread = left.max(right) - lower;
+                // 10,000 basis points per 100%; clamp an extreme gap rather
+                // than overflow u64. A ratio is NOT an executable trade quote.
+                let bps = match spread.checked_mul(U256::from(10_000u64)) {
+                    Some(scaled) => u64::try_from(scaled / lower).unwrap_or(u64::MAX),
+                    None => u64::MAX,
+                };
+                best = Some(best.unwrap_or(0).max(bps));
+            }
+        }
+    }
+    best
+}
+
 /// Pure counterfactual on the SAME conservative maxFeePerGas quote and
 /// previously accepted candidate routes. It does not relax any gas gate.
 fn usd_budget_tier_counts(usd_e8: U256, eligible_route_count: usize) -> [usize; 4] {
@@ -324,6 +382,39 @@ fn conservative_net(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cross_pool_gap_reacts_to_reserve_price_dislocation() {
+        use super::super::state::PoolState;
+        let token = address!("0000000000000000000000000000000000000101");
+        let pair_a = address!("0000000000000000000000000000000000000201");
+        let pair_b = address!("0000000000000000000000000000000000000202");
+        let mut cache = ReserveCache::default();
+        cache.insert(PoolState {
+            pair: pair_a, token0: WETH, token1: token,
+            reserve0: U256::from(10_000u64), reserve1: U256::from(20_000u64),
+            fee_bps: 30, block: 100,
+        });
+        cache.insert(PoolState {
+            pair: pair_b, token0: token, token1: WETH,
+            reserve0: U256::from(20_000u64), reserve1: U256::from(10_000u64),
+            fee_bps: 30, block: 100,
+        });
+        let all = HashSet::from([pair_a, pair_b]);
+        assert_eq!(largest_eligible_weth_v2_gap_bps(&cache, &all,
+            U256::from(1u64)), Some(0));
+        // A real Sync reserve change shifts the price 1%, over 65 bps.
+        cache.get_mut(&pair_a).unwrap().reserve1 = U256::from(20_200u64);
+        assert_eq!(largest_eligible_weth_v2_gap_bps(&cache, &all,
+            U256::from(1u64)), Some(100));
+        assert_eq!(largest_eligible_weth_v2_gap_bps(&cache,
+            &HashSet::from([pair_a]), U256::from(1u64)), None);
+        assert_eq!(largest_eligible_weth_v2_gap_bps(&cache, &all,
+            U256::from(11_000u64)), None);
+        cache.get_mut(&pair_a).unwrap().fee_bps = 25;
+        assert_eq!(largest_eligible_weth_v2_gap_bps(&cache, &all,
+            U256::from(1u64)), None);
+    }
 
     #[test]
     fn optimizer_finds_real_reserve_based_positive_size_within_cap() {
