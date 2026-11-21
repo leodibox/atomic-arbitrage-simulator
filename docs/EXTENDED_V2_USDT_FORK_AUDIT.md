@@ -64,7 +64,7 @@ Positive net estimates are **not** end-to-end contract simulations.
 Even a positive net estimate can fail on token behavior, market changes,
 MEV competition, oracle freshness, gas limit, Aave capacity or nonce.
 
-## PowerShell 5.1 — five-minute-cost-free local fork actions only
+## PowerShell 5.1 — free, local fork-only commands
 
 ```powershell
 cd "$HOME\Downloads\atomic-arbitrage-simulator"
@@ -76,7 +76,9 @@ $env:PATH = "$HOME\Downloads\atomic-arbitrage-simulator\tools\foundry;$env:PATH"
 $env:HTTPS_URL = "https://ethereum-rpc.publicnode.com"
 Remove-Item Env:MAINNET_FORK_BLOCK -ErrorAction SilentlyContinue
 forge test --match-contract GuardedPositiveUsdtForkTest -vvv
+if ($LASTEXITCODE -ne 0) { throw "USDT positive fork suite failed" }
 forge test --match-contract ExtendedV2CoverageAuditForkTest -vvv
+if ($LASTEXITCODE -ne 0) { throw "V2 market and budget audit failed" }
 ```
 
 **Before interpreting output:** both suites must compile and run with
