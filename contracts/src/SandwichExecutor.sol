@@ -156,6 +156,10 @@ contract SandwichExecutor {
         _cycleBase = 0;
     }
 
+    function cycleOpen() external view returns (bool) {
+        return _cycleOpen;
+    }
+
     function sweep(address token, uint256 amount) external onlyOwner {
         _safeTransfer(token, owner, amount);
     }

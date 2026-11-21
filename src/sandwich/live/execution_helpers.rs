@@ -7,6 +7,11 @@ use alloy::rpc::types::{TransactionInput, TransactionRequest};
 use alloy::signers::local::PrivateKeySigner;
 use anyhow::Result;
 
+pub fn cycle_open_selector() -> [u8; 4] {
+    let h = keccak256("cycleOpen()");
+    [h[0], h[1], h[2], h[3]]
+}
+
 pub fn selector() -> [u8; 4] {
     let h = keccak256("execute(uint256)");
     [h[0], h[1], h[2], h[3]]
@@ -63,6 +68,16 @@ pub fn sign_execute(
     let mut unsigned = req.build_unsigned().map_err(|e| anyhow::anyhow!("{e}"))?;
     let signature = signer.sign_transaction_sync(&mut unsigned)?;
     Ok(unsigned.into_signed(signature).encoded_2718().into())
+}
+
+pub async fn cycle_open<P: Provider<Ethereum>>(provider: &P, executor: Address) -> bool {
+    let req = TransactionRequest::default()
+        .to(executor)
+        .input(TransactionInput::both(Bytes::from(cycle_open_selector().to_vec())));
+    match provider.call(req).await {
+        Ok(res) if res.len() >= 32 => res[31] == 1,
+        _ => false,
+    }
 }
 
 pub async fn erc20_balance<P: Provider<Ethereum>>(

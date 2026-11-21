@@ -1,5 +1,5 @@
 use super::config::SandwichConfig;
-use super::execution_helpers::{build_execute_calldata, sign_execute};
+use super::execution_helpers::{build_execute_calldata, cycle_open, sign_execute};
 use super::nonce::NonceManager;
 use super::relay::{new_uuid, BundleRequest, RelayClient};
 use super::router::decode;
@@ -95,6 +95,10 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
             return;
         }
     } else if victim.limit.is_zero() {
+        return;
+    }
+
+    if cycle_open(&ctx.provider, cfg.executor).await {
         return;
     }
 
