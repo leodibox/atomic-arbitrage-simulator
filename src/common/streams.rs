@@ -4,7 +4,6 @@ use alloy::{
     providers::Provider,
     rpc::types::Transaction,
 };
-use alloy::network::TransactionResponse;
 use anyhow::Result;
 use futures::StreamExt;
 use tokio::sync::broadcast;

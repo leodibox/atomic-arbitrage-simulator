@@ -161,7 +161,7 @@ impl<P: Provider<Ethereum> + Clone + 'static> Harness<P> {
         victim: &Transaction,
         amount: U256,
     ) -> Option<U256> {
-        let mut db = self.prepare(block, swap, victim).await?;
+        let db = self.prepare(block, swap, victim).await?;
 
         // We keep one Evm (and its db) across all three txs so state commits persist.
         let mut ctx = Context::mainnet().with_db(db);
