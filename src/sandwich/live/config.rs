@@ -1,6 +1,6 @@
 use alloy::primitives::{Address, U256};
 use anyhow::{bail, Context, Result};
-use std::{env, str::FromStr};
+use std::env;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Feed { Txpool, FullPending, Alchemy }
