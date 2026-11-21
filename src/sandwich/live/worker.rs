@@ -107,6 +107,7 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
         ctx.provider.clone(),
         head,
         base_fee,
+        p.profit_weth * U256::from(95u64) / U256::from(100u64),
         &tx,
         victim.pair,
         front_dir,

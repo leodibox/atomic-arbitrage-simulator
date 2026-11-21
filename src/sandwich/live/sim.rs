@@ -46,6 +46,7 @@ pub async fn confirm<P: Provider<Ethereum> + Clone + 'static>(
     provider: P,
     block: u64,
     base_fee: U256,
+    min_profit: U256,
     victim: &Transaction<TxEnvelope>,
     pair: Address,
     front_dir: bool,
@@ -122,7 +123,7 @@ pub async fn confirm<P: Provider<Ethereum> + Clone + 'static>(
         return None;
     }
 
-    let back = build_execute_calldata(block, U256::ZERO, &[(!front_dir, pair, token_out, held)]);
+    let back = build_execute_calldata(block, min_profit, &[(!front_dir, pair, token_out, held)]);
     match evm.transact_commit(tx_env(c.owner, c.executor, back, 220_000)).ok()? {
         ExecutionResult::Success { .. } => {}
         _ => return None,
