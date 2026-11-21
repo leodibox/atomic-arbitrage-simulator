@@ -10,7 +10,7 @@ use super::unwind::Position;
 use super::unwind::Positions;
 use crate::arbitrage::state::PoolState;
 use crate::common::constants::WETH;
-use alloy::eips::Encodable2718;
+use alloy::eips::{BlockNumberOrTag, Encodable2718};
 use alloy::consensus::Transaction as ConsensusTx;
 use alloy::network::{Ethereum, TransactionResponse};
 use alloy::primitives::{Address, U256};
@@ -72,7 +72,7 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
         (other, WETH)
     };
 
-    if victim.victim_buys && victim.amount_in < cfg.min_victim_weth {
+    if !victim.victim_buys || victim.amount_in < cfg.min_victim_weth {
         return;
     }
 
@@ -94,7 +94,7 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
     let Some(p) = plan(&pool, &victim, float, MAX_SHARE_BPS) else { return };
 
     let front_dir = victim.token0_is_main;
-    let conf = Confirm { executor: cfg.executor, weth_float: float, token_float: U256::ZERO };
+    let conf = Confirm { executor: cfg.executor, owner: ctx.signer.address(), weth_float: float, token_float: U256::ZERO };
     let Some(sim_profit) = confirm(
         ctx.provider.clone(),
         head,
@@ -117,16 +117,25 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
     }
 
     let victim_tip = U256::from(tx.max_priority_fee_per_gas().unwrap_or_default());
+    let base_fee = ctx
+        .provider
+        .get_block_by_number(BlockNumberOrTag::Latest)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|b| b.header.base_fee_per_gas)
+        .map(U256::from)
+        .unwrap_or_default();
     let share = sim_profit * U256::from(cfg.tip_bps) / U256::from(10_000u64);
     let cap = sim_profit * U256::from(cfg.max_tip_bps) / U256::from(10_000u64);
     let tip = share.max(victim_tip + victim_tip / U256::from(10u64)).min(cap);
-    let gas_cost = U256::from(cfg.gas_units) * tip;
+    let gas_cost = U256::from(cfg.gas_units) * (base_fee + tip);
     let revenue = sim_profit.saturating_sub(gas_cost);
     if revenue < cfg.min_revenue_weth {
         return;
     }
     let fee_cap = cfg.max_gas_price * U256::from(1_000_000_000u64);
-    let max_fee = (U256::ZERO + tip).min(fee_cap);
+    let max_fee = (base_fee * U256::from(2u64) + tip).min(fee_cap);
 
     info!(
         pair = %victim.pair, victim = %tx.tx_hash(), front = %p.front_amount,

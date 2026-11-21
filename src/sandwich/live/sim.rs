@@ -1,6 +1,6 @@
 use crate::common::constants::WETH;
 use crate::common::utils::to_h160;
-use crate::sandwich::simulation::encode_instructions;
+use super::execution_helpers::build_execute_calldata;
 use alloy::consensus::{Transaction as ConsensusTx, TxEnvelope};
 use alloy::network::{Ethereum, TransactionResponse};
 use alloy::primitives::{keccak256, Address, B256, Bytes, U256};
@@ -20,6 +20,7 @@ use revm::{
 };
 
 pub struct Confirm {
+    pub owner: Address,
     pub executor: Address,
     pub weth_float: U256,
     pub token_float: U256,
@@ -57,13 +58,20 @@ pub async fn confirm<P: Provider<Ethereum> + Clone + 'static>(
 
     db.insert_account_storage(WETH, U256::from_be_bytes(slot(c.executor, 3).0), c.weth_float).ok()?;
     db.insert_account_storage(token_out, U256::from_be_bytes(slot(c.executor, 3).0), c.token_float).ok()?;
+    let (code_hash, code) = match db.basic(to_h160(c.executor)).ok().flatten() {
+        Some(a) => (a.code_hash, a.code),
+        None => (KECCAK_EMPTY, None),
+    };
+    if code.is_none() {
+        return None;
+    }
     db.insert_account_info(
         to_h160(c.executor),
         AccountInfo {
             balance: U256::ZERO,
             nonce: 1,
-            code_hash: KECCAK_EMPTY,
-            code: None,
+            code_hash,
+            code,
             account_id: None,
         },
     );
@@ -86,13 +94,11 @@ pub async fn confirm<P: Provider<Ethereum> + Clone + 'static>(
         .ctx
         .journaled_state
         .db_mut()
-        .basic(to_h160(c.executor))
+        .storage(to_h160(WETH), slot(c.owner, 3).into())
         .ok()
-        .flatten()
-        .map(|a| a.balance)
         .unwrap_or_default();
 
-    let front = encode_instructions(block, &[(front_dir, pair, token_in, front_amount, U256::ZERO)]);
+    let front = build_execute_calldata(block, U256::ZERO, &[(front_dir, pair, token_in, front_amount)]);
     match evm.transact_commit(tx_env(c.executor, c.executor, front, 220_000)).ok()? {
         ExecutionResult::Success { .. } => {}
         _ => return None,
@@ -116,7 +122,7 @@ pub async fn confirm<P: Provider<Ethereum> + Clone + 'static>(
         return None;
     }
 
-    let back = encode_instructions(block, &[(!front_dir, pair, token_out, held, U256::ZERO)]);
+    let back = build_execute_calldata(block, U256::ZERO, &[(!front_dir, pair, token_out, held)]);
     match evm.transact_commit(tx_env(c.executor, c.executor, back, 220_000)).ok()? {
         ExecutionResult::Success { .. } => {}
         _ => return None,
@@ -126,10 +132,8 @@ pub async fn confirm<P: Provider<Ethereum> + Clone + 'static>(
         .ctx
         .journaled_state
         .db_mut()
-        .basic(to_h160(c.executor))
+        .storage(to_h160(WETH), slot(c.owner, 3).into())
         .ok()
-        .flatten()
-        .map(|a| a.balance)
         .unwrap_or_default();
     after.checked_sub(before)
 }
