@@ -31,6 +31,8 @@ contract SandwichExecutor {
     uint256 private constant FEE_NUM = 997;
     uint256 private constant FEE_DEN = 1000;
     uint256 private _lock = 1;
+    uint256 private _cycleBase;
+    bool private _cycleOpen;
 
     error NotOwner();
     error Stale();
@@ -38,6 +40,7 @@ contract SandwichExecutor {
     error Unprofitable();
     error Reentered();
     error TransferFailed();
+    error OpenLegProfit();
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
@@ -55,8 +58,10 @@ contract SandwichExecutor {
         owner = msg.sender;
     }
 
-    /// @param minProfitWeth minimum net WETH gain required by this leg.
-    ///        Use 0 on the front-run, the quoted profit on the back-run.
+    /// @param minProfitWeth net WETH gain required for the WHOLE cycle.
+    ///        Opening leg: must be 0, it stores the cycle base.
+    ///        Closing leg: 0 closes at any result (used by the unwind),
+    ///        a positive value reverts unless the cycle beats base + minimum.
     function execute(uint256 minProfitWeth) external onlyOwner nonReentrant {
         uint256 encodedBlock;
         assembly {
@@ -64,17 +69,19 @@ contract SandwichExecutor {
         }
         if (encodedBlock != block.number) revert Stale();
 
-        uint256 before = IERC20Like(WETH).balanceOf(address(this));
-        _run(msg.data.length);
-        uint256 afterBal = IERC20Like(WETH).balanceOf(address(this));
-
-        if (afterBal >= before) {
-            uint256 gained = afterBal - before;
-            if (gained < minProfitWeth) revert Unprofitable();
-            if (gained != 0) _safeTransfer(WETH, owner, gained);
-        } else if (minProfitWeth != 0) {
-            revert Unprofitable();
+        if (!_cycleOpen) {
+            if (minProfitWeth != 0) revert OpenLegProfit();
+            _cycleOpen = true;
+            _cycleBase = IERC20Like(WETH).balanceOf(address(this));
+            _run(msg.data.length);
+            return;
         }
+
+        _run(msg.data.length);
+        uint256 settled = IERC20Like(WETH).balanceOf(address(this));
+        _cycleOpen = false;
+        if (minProfitWeth != 0 && settled < _cycleBase + minProfitWeth) revert Unprofitable();
+        if (settled > _cycleBase) _safeTransfer(WETH, owner, settled - _cycleBase);
     }
 
     function _run(uint256 end) private {
@@ -142,6 +149,11 @@ contract SandwichExecutor {
             token.call(abi.encodeWithSelector(0xa9059cbb, to, amount));
         if (!ok) revert TransferFailed();
         if (ret.length != 0 && !abi.decode(ret, (bool))) revert TransferFailed();
+    }
+
+    function resetCycle() external onlyOwner {
+        _cycleOpen = false;
+        _cycleBase = 0;
     }
 
     function sweep(address token, uint256 amount) external onlyOwner {

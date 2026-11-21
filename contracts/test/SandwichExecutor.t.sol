@@ -128,4 +128,41 @@ contract SandwichExecutorTest is Test {
         exec.sweepAll(address(weth));
         assertEq(weth.balanceOf(address(this)), 10 ether);
     }
+
+    function testOpeningLegRejectsMinProfit() public {
+        vm.expectRevert(SandwichExecutor.OpenLegProfit.selector);
+        _exec(_steps(1, address(weth), 1 ether), 1);
+    }
+
+    function testLosingCycleClosesAtAnyResult() public {
+        uint256 base = weth.balanceOf(address(this));
+        assertTrue(_exec(_steps(1, address(weth), 1 ether), 0));
+        uint256 held = token.balanceOf(address(exec));
+        assertGt(held, 0);
+        // No victim: the round trip only pays two swap fees.
+        assertTrue(_exec(_steps(0, address(token), held), 0));
+        assertEq(token.balanceOf(address(exec)), 0);
+        assertEq(weth.balanceOf(address(this)), base);
+        assertLt(weth.balanceOf(address(exec)), 10 ether);
+    }
+
+    function testLosingCycleRevertsWithPositiveMinProfit() public {
+        _exec(_steps(1, address(weth), 1 ether), 0);
+        uint256 held = token.balanceOf(address(exec));
+        vm.expectRevert(SandwichExecutor.Unprofitable.selector);
+        _exec(_steps(0, address(token), held), 1);
+    }
+
+    function testResetCycleAllowsReopeningAfterDanglingFront() public {
+        assertTrue(_exec(_steps(1, address(weth), 1 ether), 0));
+        exec.resetCycle();
+        vm.expectRevert(SandwichExecutor.OpenLegProfit.selector);
+        _exec(_steps(1, address(weth), 1 ether), 1);
+    }
+
+    function testResetCycleOnlyOwner() public {
+        vm.prank(address(0xBEEF));
+        vm.expectRevert(SandwichExecutor.NotOwner.selector);
+        exec.resetCycle();
+    }
 }

@@ -13,7 +13,7 @@ use crate::common::constants::WETH;
 use alloy::eips::{BlockNumberOrTag, Encodable2718};
 use alloy::consensus::Transaction as ConsensusTx;
 use alloy::network::{Ethereum, TransactionResponse};
-use alloy::primitives::{Address, U256};
+use alloy::primitives::{keccak256, Address, B256, U256};
 use hex;
 use alloy::providers::Provider;
 use alloy::consensus::TxEnvelope;
@@ -76,7 +76,15 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
         return;
     }
 
-    let head = ctx.universe.head();
+    let base_fee = ctx
+        .provider
+        .get_block_by_number(BlockNumberOrTag::Latest)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|b| b.header.base_fee_per_gas)
+        .map(U256::from)
+        .unwrap_or_default();    let head = ctx.universe.head();
     let Some(pool) = ctx.universe.fresh_pool(&victim.pair, cfg.max_reserve_age).await else {
         return;
     };
@@ -97,7 +105,7 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
     let conf = Confirm { executor: cfg.executor, owner: ctx.signer.address(), weth_float: float, token_float: U256::ZERO };
     let Some(sim_profit) = confirm(
         ctx.provider.clone(),
-        head,
+        base_fee,
         U256::ZERO,
         &tx,
         victim.pair,
@@ -169,7 +177,7 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
 
     let victim_raw = tx.inner.encoded_2718();
     let uuid = new_uuid();
-    let victim_hash = format!("0x{}", hex::encode(tx.tx_hash().as_slice()));
+    let _victim_hash = format!("0x{}", hex::encode(tx.tx_hash().as_slice()));
 
     let mut target = head + 1;
     let mut landed = false;
@@ -178,7 +186,7 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
             .relays
             .send_bundle(&BundleRequest {
                 txs: vec![front.clone(), victim_raw.clone().into(), back.clone()],
-                block: target,
+                reverting: vec![],
                 reverting: vec![victim_hash.clone()],
                 replacement_uuid: uuid.clone(),
             })
@@ -192,7 +200,12 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
 
         tokio::time::sleep(std::time::Duration::from_secs(11)).await;
         if ctx.universe.head() > target {
-            landed = true;
+            let front_ok = receipt_success(&ctx.provider, keccak256(&front)).await;
+            let back_ok = receipt_success(&ctx.provider, keccak256(&back)).await;
+            landed = front_ok && back_ok;
+            if !landed {
+                warn!(front_ok, back_ok, "target block passed without both legs landing");
+            }
             break;
         }
         target = ctx.universe.head() + 1;
@@ -205,10 +218,18 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
             pair: victim.pair,
             opened_block: head,
             token0_is_main: victim.token0_is_main,
+            amount: p.back_amount,
         });
         info!(pair = %victim.pair, "window expired, unwind armed");
     }
     let _ = ctx.nonces.reconcile().await;
+}
+
+async fn receipt_success<P: Provider<Ethereum>>(provider: &P, hash: B256) -> bool {
+    match provider.get_transaction_receipt(hash).await {
+        Ok(Some(receipt)) => receipt.status(),
+        _ => false,
+    }
 }
 
 async fn other_side<P: Provider<Ethereum> + Clone + 'static>(ctx: &Arc<Ctx<P>>, v: &super::router::Victim) -> Option<Address> {
