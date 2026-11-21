@@ -245,6 +245,10 @@ where
         refresh_timer.tick().await; // We already fetched the initial snapshot.
     }
     let mut refresh_due = false;
+    // V2 Sync events normally trigger gross discovery only. A candidate after
+    // an event deserves one fresh, pinned net screen before the next timer tick.
+    let mut sync_event_pending = false;
+    let mut last_event_net_screen_block: Option<u64> = None;
     let mut observed_block = block;
     info!(
         amount_mode = %amount_mode,
@@ -351,6 +355,8 @@ where
         }
         let block = observed_block.max(cache.read().await.last_block());
         observed_block = block;
+        let triggered_by_sync = sync_event_pending;
+        sync_event_pending = false;
 
         let (pools, fresh_count, stale_count, cycles, near_misses, last_block, amounts_tried,
             v2_compatible_gross_candidates) = {
@@ -513,6 +519,42 @@ where
             "arbitrage discovery (gross candidates only; V2 compatibility counted, not live-trade signals)"
         );
 
+        // Only gross V2-compatible candidates from a real Sync notification
+        // can trigger this extra RPC pass. The cache may mix block ages, so
+        // NEVER price it directly: fetch all pairs at one pinned block first.
+        // One request per block, bounded by five seconds. Read only.
+        if triggered_by_sync && v2_compatible_gross_candidates > 0
+            && last_event_net_screen_block != Some(block)
+        {
+            last_event_net_screen_block = Some(block);
+            if let Some(net_scan) = net_scan.as_ref() {
+                let fresh_head = provider.get_block_number().await;
+                match fresh_head {
+                    Ok(head) if head == block => {
+                        let check = async {
+                            let fresh = load_allowlisted_reserves(
+                                &provider, &expanded_allowlist, block,
+                            ).await?;
+                            net_scan.report(
+                                &provider, &fresh, block, sim_min_profit, sim_max_hops,
+                            ).await
+                        };
+                        if !matches!(tokio::time::timeout(Duration::from_secs(5), check).await,
+                            Ok(Ok(())))
+                        {
+                            warn!(block, "event candidate net screen inconclusive; no authorization");
+                        }
+                    }
+                    Ok(head) => info!(block, head,
+                        "event candidate already superseded; skipping stale net estimate"),
+                    Err(error) => warn!(block, %error,
+                        "event candidate cannot confirm head; skipping net estimate"),
+                }
+            } else {
+                info!(block, "event candidate pending canonical V2 net-scan configuration");
+            }
+        }
+
         for cycle in cycles.iter().take(5) {
             // Aave premium is in loan asset raw units. This is intentionally
             // PRE-GAS only: real net profit has not been independently verified.
@@ -571,6 +613,7 @@ where
             _ = sync_notify.notified() => {
                 // Coalesce bursts to avoid repeated CPU-heavy calculations.
                 tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+                sync_event_pending = true;
             }
         }
     }
