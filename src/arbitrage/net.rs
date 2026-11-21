@@ -326,6 +326,39 @@ mod tests {
     use super::*;
 
     #[test]
+    fn optimizer_finds_real_reserve_based_positive_size_within_cap() {
+        use super::super::state::PoolState;
+        let token = address!("0000000000000000000000000000000000000101");
+        let mut cache = ReserveCache::default();
+        cache.insert(PoolState {
+            pair: address!("0000000000000000000000000000000000000201"),
+            token0: WETH, token1: token,
+            reserve0: U256::from(1_000_000u64),
+            reserve1: U256::from(2_000_000u64),
+            fee_bps: 30, block: 10,
+        });
+        cache.insert(PoolState {
+            pair: address!("0000000000000000000000000000000000000202"),
+            token0: token, token1: WETH,
+            reserve0: U256::from(1_800_000u64),
+            reserve1: U256::from(1_000_000u64),
+            fee_bps: 30, block: 10,
+        });
+        let cap = U256::from(100_000u64);
+        let optimized = optimal_two_hop_v2_sizes(&cache, cap);
+        assert!(!optimized.is_empty(), "dislocation should have an optimum");
+        assert!(optimized.iter().all(|x| !x.is_zero() && *x <= cap));
+        let first = cache.get(&address!("0000000000000000000000000000000000000201")).unwrap();
+        let second = cache.get(&address!("0000000000000000000000000000000000000202")).unwrap();
+        assert!(optimized.iter().any(|&amount| {
+            let (_, mid) = first.quote(WETH, amount).unwrap();
+            let (_, output) = second.quote(token, mid).unwrap();
+            output > amount
+        }));
+        assert!(optimal_two_hop_v2_sizes(&cache, U256::ZERO).is_empty());
+    }
+
+    #[test]
     fn usd_tiers_are_monotone_and_never_change_the_sender_cap() {
         assert_eq!(usd_budget_tier_counts(U256::from(499_999_999u64), 3), [3, 3, 3, 3]);
         assert_eq!(usd_budget_tier_counts(U256::from(500_000_001u64), 3), [0, 3, 3, 3]);
