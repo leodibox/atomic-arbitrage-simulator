@@ -83,7 +83,7 @@ async function main(){
   ]);
   const decimals=word(oracleDecimals);
   const roundId=word(round,0), price=word(round,1), updated=word(round,3), answered=word(round,4);
-  if(decimals!==8n||roundId===0n||answered<roundId||price===0n||
+  if(decimals!==8n||roundId===0n||answered<roundId||price===0n||price>=(1n<<255n)||
      updated>at||at-updated>3600n) throw Error("Invalid/stale Chainlink ETH/USD");
   const gasWei=GAS_UNITS*(2n*BigInt(latest.baseFeePerGas)+TIP);
   const gasUsdE8=(gasWei*price*110n + 100n*10n**18n-1n)/(100n*10n**18n);
