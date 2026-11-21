@@ -56,7 +56,7 @@ forge test --match-contract TriangularV2RealPairsForkTest -vvv
 if ($LASTEXITCODE -ne 0) { throw "Triangle fork audit failed or did not compile" }
 ```
 
-The new suite is **NOT YET RUN**. Observe the exact returned
+The new suite was **OWNER-RUN: 1 PASS, 0 FAIL, 0 SKIP** on Ethereum mainnet fork block **26460047**. Observe the exact returned
 `fork_block`, `cross_token_pairs_found_across_factories`,
 `eligible_three_hop_route_variants`, `gross_positive_probes`,
 `net_positive_probes`, `worst_case_gas_usd_e8` and $5 tier
@@ -77,3 +77,36 @@ backtests never guarantee executable mainnet profit.
 
 Keep this research branch **DRAFT** until full Foundry results
 are collected. No contract or scanner code changes.
+
+## Owner verified results — fork block 26460047
+
+Foundry Solc 0.8.24 compiled successfully after the stack-depth
+refactoring at commit `4170095`. The owner ran:
+`forge test --match-contract TriangularV2RealPairsForkTest -vvv`.
+
+- **1 test PASS, 0 FAIL, 0 SKIP**
+- **10** factory-verified cross-token pairs discovered out of 12 possibilities.
+- **60** eligible three-hop route variants including both directions and
+  Uniswap/Sushi pool combinations.
+- **600** loan-size probes using real observed V2 reserves.
+- **0** gross-positive probes and **0** positive-net probes.
+- **0** candidates within each hypothetical $5 / $10 / $15 / $20 gas tier.
+- Max modeled fee with safety margin: `396721109` USD-e8 =
+  **$3.96721109**.
+- Max modeled ETH gas: `2226172652000000 wei` =
+  **0.002226172652 ETH**.
+- This modeled gas estimate is within the existing $5 gate in the fork block.
+
+Data are a **single block snapshot**, not a time series. No profitable
+swap was observed in these candidate routes. The test does not prove the
+absence of profits in other tokens, sizes, pools, venues, blocks or
+strategies, and does not perform exact Guarded contract execution
+simulation for real triangular routes. No signer or mainnet action.
+Only audit tests and documentation were changed; no runtime discovery,
+execution controls, production contract or gas cap was modified.
+
+Decision: acceptable to archive/merge the audit evidence only.
+Next economically meaningful investigation is to compare
+alternative venues / V3 read-only coverage or a bounded historical
+block sample before spending deployment gas. Neither is authorized
+by these tests to execute live operations.
