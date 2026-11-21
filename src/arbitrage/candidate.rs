@@ -64,12 +64,12 @@ mod tests {
     fn prepared() -> PreparedV2FlashLoan {
         PreparedV2FlashLoan {
             asset: address!("0000000000000000000000000000000000000001"),
-            amount: U256::from(1000),
+            amount: U256::from(1000u64),
             pair_path: vec![1u8; 42],
-            min_profit_onchain: U256::from(100),
+            min_profit_onchain: U256::from(100u64),
             calldata: vec![1u8, 2, 3, 4],
             quoted_at_block: 100,
-            expected_gross_profit: U256::from(300),
+            expected_gross_profit: U256::from(300u64),
         }
     }
 
@@ -77,7 +77,7 @@ mod tests {
     fn produces_deterministic_hash_without_transaction_submission() {
         let p = prepared();
         let candidate = ReadOnlyCandidate::from_preflight(
-            1, 100, &p, U256::from(150)
+            1, 100, &p, U256::from(150u64)
         ).unwrap();
         assert_eq!(candidate.calldata_hash, keccak256(&p.calldata));
         assert_eq!(candidate.pair_count, 2);
@@ -87,14 +87,14 @@ mod tests {
     #[test]
     fn rejects_stale_wrong_chain_and_nonprofitable_candidates() {
         let p = prepared();
-        assert!(ReadOnlyCandidate::from_preflight(8453, 100, &p, U256::from(1)).is_err());
-        assert!(ReadOnlyCandidate::from_preflight(1, 101, &p, U256::from(1)).is_err());
+        assert!(ReadOnlyCandidate::from_preflight(8453, 100, &p, U256::from(1u64)).is_err());
+        assert!(ReadOnlyCandidate::from_preflight(1, 101, &p, U256::from(1u64)).is_err());
         assert!(ReadOnlyCandidate::from_preflight(1, 100, &p, U256::ZERO).is_err());
         let mut no_data = p.clone();
         no_data.calldata.clear();
-        assert!(ReadOnlyCandidate::from_preflight(1, 100, &no_data, U256::from(1)).is_err());
+        assert!(ReadOnlyCandidate::from_preflight(1, 100, &no_data, U256::from(1u64)).is_err());
         let mut wrong_path = p;
         wrong_path.pair_path.pop();
-        assert!(ReadOnlyCandidate::from_preflight(1, 100, &wrong_path, U256::from(1)).is_err());
+        assert!(ReadOnlyCandidate::from_preflight(1, 100, &wrong_path, U256::from(1u64)).is_err());
     }
 }
