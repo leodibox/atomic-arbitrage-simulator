@@ -3,8 +3,7 @@
 //! Deliberately dumb: one attempt, no retries, no fee re-pricing. Every
 //! precondition is decided by the caller (activation, gate, reservation).
 use alloy::{
-    consensus::{SignableTransaction, Transaction, TxEnvelope},
-    eips::eip2718::Decodable2718,
+    consensus::SignableTransaction,
     eips::Encodable2718,
     network::{Ethereum, NetworkTransactionBuilder, TxSignerSync},
     primitives::{Address, B256, U256},
@@ -116,6 +115,8 @@ pub async fn await_receipt<P: Provider<Ethereum>>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloy::consensus::{Transaction, TxEnvelope};
+    use alloy::eips::eip2718::Decodable2718;
 
     fn signer() -> PrivateKeySigner {
         PrivateKeySigner::from_slice(&[7u8; 32]).unwrap()

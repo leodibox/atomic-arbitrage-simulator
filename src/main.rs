@@ -59,6 +59,19 @@ async fn main() -> anyhow::Result<()> {
             "Guarded executor public configuration INVALID; no execution permitted"),
     }
 
+    let live = sandooo::arbitrage::live::coordinator::LiveConfig::from_env()
+        .map_err(|error| anyhow::anyhow!("{error}"))?;
+    let live_signer = match (&live, std::env::var("PRIVATE_KEY")) {
+        (Some(_), Ok(key)) => Some(
+            <alloy::signers::local::PrivateKeySigner as std::str::FromStr>::from_str(key.trim())
+                .map_err(|error| anyhow::anyhow!("invalid PRIVATE_KEY: {error}"))?,
+        ),
+        (Some(_), Err(_)) => anyhow::bail!("ARB_LIVE_SEND=true requires PRIVATE_KEY"),
+        (None, _) => None,
+    };
+    if live.is_some() {
+        info!(live_send = true, "LIVE SEND ENABLED; gas will be spent");
+    }
     // Fail closed: never select the legacy pending-transaction strategy by
     // omission, typo, or an unknown value.
     let scan_config = std::env::var("POOL_SCAN_ENABLED").ok();
@@ -135,6 +148,19 @@ async fn run_allowlisted_simulation<P>(provider: P) -> anyhow::Result<()>
 where
     P: Provider<alloy::network::Ethereum> + Clone + Send + Sync + 'static,
 {
+    let live = sandooo::arbitrage::live::coordinator::LiveConfig::from_env()
+        .map_err(|error| anyhow::anyhow!("{error}"))?;
+    let live_signer = match (&live, std::env::var("PRIVATE_KEY")) {
+        (Some(_), Ok(key)) => Some(
+            <alloy::signers::local::PrivateKeySigner as std::str::FromStr>::from_str(key.trim())
+                .map_err(|error| anyhow::anyhow!("invalid PRIVATE_KEY: {error}"))?,
+        ),
+        (Some(_), Err(_)) => anyhow::bail!("ARB_LIVE_SEND=true requires PRIVATE_KEY"),
+        (None, _) => None,
+    };
+    if live.is_some() {
+        info!(live_send = true, "LIVE SEND ENABLED; gas will be spent");
+    }
     let allowlist = std::env::var("POOL_ALLOWLIST").unwrap_or_default();
     if allowlist.trim().is_empty() {
         warn!("POOL_ALLOWLIST is empty; worker will remain idle");
@@ -576,6 +602,23 @@ where
         }
 
         for cycle in cycles.iter().take(5) {
+            if let (Some(live_config), Some(live_signer)) = (&live, &live_signer) {
+                if let Ok(Some(header)) = provider.get_block_by_number(block.into()).await {
+                    if let Some(base_fee) = header.header.base_fee_per_gas {
+                        let guard = cache.read().await;
+                        match sandooo::arbitrage::live::coordinator::attempt(
+                            &provider, live_signer, live_config, &guard, cycle, block, base_fee,
+                        )
+                        .await
+                        {
+                            Ok(attempt) => {
+                                info!(stage = ?attempt.stage, detail = %attempt.detail, "live attempt")
+                            }
+                            Err(error) => warn!(%error, "live attempt failed"),
+                        }
+                    }
+                }
+            }
             // Aave premium is in loan asset raw units. This is intentionally
             // PRE-GAS only: real net profit has not been independently verified.
             let premium = cycle.amount_in * alloy::primitives::U256::from(premium_bps)
