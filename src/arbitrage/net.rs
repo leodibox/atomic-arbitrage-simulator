@@ -1,4 +1,5 @@
 use super::{
+    candidate::ReadOnlyCandidate,
     find_cycles,
     preflight::{prepare_v2_flash_loan, supports_legacy_v2_pool, ExecutionLimits, GasQuote},
     ReserveCache,
@@ -135,10 +136,33 @@ impl NetScan {
                     rejected_by_net_floor += 1;
                     continue;
                 }
-                if prepare_v2_flash_loan(&verified, &cycle, &limits, Some(&cost)).is_err() {
-                    rejected_by_preflight += 1;
-                    continue;
-                }
+                let prepared = match prepare_v2_flash_loan(
+                    &verified, &cycle, &limits, Some(&cost),
+                ) {
+                    Ok(plan) => plan,
+                    Err(_) => {
+                        rejected_by_preflight += 1;
+                        continue;
+                    }
+                };
+                let candidate = match ReadOnlyCandidate::from_preflight(
+                    1, block, &prepared, net,
+                ) {
+                    Ok(candidate) => candidate,
+                    Err(_) => {
+                        rejected_by_preflight += 1;
+                        continue;
+                    }
+                };
+                // Evidence only. Do NOT persist, authorize, sign or broadcast.
+                // This candidate still lacks exact sender eth_call, independent
+                // public attestation and a durable one-shot reservation.
+                info!(block, candidate_hash = %candidate.calldata_hash,
+                    route_hops = candidate.pair_count,
+                    loan_wei = %candidate.loan_amount,
+                    modeled_net_wei = %candidate.estimated_net_after_modeled_costs,
+                    can_sign = false, live_approved = false,
+                    "read-only prepared candidate; exact execution simulation pending");
                 accepted_probe_sizes += 1;
                 let route: Vec<_> = cycle.hops.iter().map(|hop| hop.pair).collect();
                 let best = positive.entry(route).or_insert((net, amount));
