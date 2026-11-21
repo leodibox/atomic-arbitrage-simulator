@@ -33,8 +33,8 @@ contract GuardedUsdtMainnetForkTest is Test {
     address constant AAVE = 0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2;
     address constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
     address constant USDT = 0xdAC17F958D2ee523a2206206994597C13D831ec7;
-    address constant UNI = 0x0d4a11d5EEaaC28EC3F61D100daF4d40471f1852;
-    address constant SUSHI = 0x06da0fd433C1A5D7a4faa01111c044910A184553;
+    address constant UNI = 0x0d4a11d5EEaaC28EC3F61d100daF4d40471f1852;
+    address constant SUSHI = 0x06da0fd433C1A5d7a4faa01111c044910A184553;
     address constant UNI_FACTORY = 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f;
     address constant SUSHI_FACTORY = 0xC0AEe478e3658e2610c5F7A4A2E1777cE9e4f2Ac;
     address constant RECIPIENT = 0x49826Aa476d6388fcdccAD7b3661597986a53132;
