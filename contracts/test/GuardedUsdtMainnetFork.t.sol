@@ -167,6 +167,30 @@ contract GuardedUsdtMainnetForkTest is Test {
         assertEq(IUsdtForkErc20(asset).allowance(address(arb), AAVE), 0);
     }
 
+    /// Directly verify nonstandard real USDT approve return bytes on a fork,
+    /// without funding any wallet or authorizing a real transaction.
+    function testFork_realUsdtApproveZeroAndNonzeroReturnsEmpty() public {
+        _fork();
+        (bool ok, bytes memory ret) = USDT.call(
+            abi.encodeWithSignature("approve(address,uint256)", AAVE, 0)
+        );
+        assertTrue(ok, "USDT approve(0) failed");
+        assertEq(ret.length, 0, "unexpected USDT approval returndata");
+        (ok, ret) = USDT.call(
+            abi.encodeWithSignature("approve(address,uint256)", AAVE, 123456)
+        );
+        assertTrue(ok, "USDT approve(nonzero) failed");
+        assertEq(ret.length, 0, "unexpected USDT approval returndata");
+        assertEq(IUsdtForkErc20(USDT).allowance(address(this), AAVE), 123456);
+        (ok, ret) = USDT.call(
+            abi.encodeWithSignature("approve(address,uint256)", AAVE, 0)
+        );
+        assertTrue(ok, "USDT allowance reset failed");
+        assertEq(ret.length, 0);
+        assertEq(IUsdtForkErc20(USDT).allowance(address(this), AAVE), 0);
+        emit log_named_uint("fork_block", block.number);
+    }
+
     function testFork_WethUniThenSushiUsdtTransfer() public {
         _route(WETH, UNI, SUSHI, 0.05 ether);
     }
