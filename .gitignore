@@ -7,3 +7,7 @@ contracts/cache/
 contracts/out/
 contracts/lib/
 .vscode/
+tools/foundry/
+out/
+dryrun-full.log
+base_quote_result.json

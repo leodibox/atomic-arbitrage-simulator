@@ -59,20 +59,6 @@ async fn main() -> anyhow::Result<()> {
             "Guarded executor public configuration INVALID; no execution permitted"),
     }
 
-    let live = sandooo::arbitrage::live::coordinator::LiveConfig::from_env()
-        .map_err(|error| anyhow::anyhow!("{error}"))?;
-    let live_signer = match (&live, std::env::var("PRIVATE_KEY")) {
-        (Some(_), Ok(key)) => Some(
-            <alloy::signers::local::PrivateKeySigner as std::str::FromStr>::from_str(key.trim())
-                .map_err(|error| anyhow::anyhow!("invalid PRIVATE_KEY: {error}"))?,
-        ),
-        (Some(_), Err(_)) => anyhow::bail!("ARB_LIVE_SEND=true requires PRIVATE_KEY"),
-        (None, _) => None,
-    };
-    if live.is_some() {
-        info!(live_send = true, "LIVE SEND ENABLED; gas will be spent");
-    }
-    // Fail closed: never select the legacy pending-transaction strategy by
     // omission, typo, or an unknown value.
     let scan_config = std::env::var("POOL_SCAN_ENABLED").ok();
     let scan_enabled = parse_scan_enabled(scan_config.as_deref())?;
