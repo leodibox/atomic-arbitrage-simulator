@@ -25,15 +25,23 @@ Separate binary. Nothing in the arbitrage path changes: src/arbitrage/*, src/mai
 
 ## Why the victim raw tx is in the bundle
 
-A 2-tx bundle is not a sandwich. Including the victim signed bytes makes
-front/victim/back one atomic unit: all three land in order, or none.
+A 2-tx bundle is not a sandwich. Including the victim signed bytes puts
+front/victim/back in order in one block. Atomicity is the relay job: the bundle
+is submitted with an EMPTY revertingTxHashes, so a reverted victim or a reverted
+back-run drops the whole bundle and costs no gas. The contract does not and
+cannot enforce cross-transaction atomicity on its own.
 
 ## Hard rules in the contract
 
 - block.number must equal the encoded block, so no trading on stale reserves
-- last leg asserts minProfitWeth, so it reverts instead of eating a loss
+- the opening leg must pass minProfitWeth = 0 and stores the cycle base
+- the closing leg compares against that stored base, so a cycle that ends below
+  the base reverts unless minProfitWeth is 0
+- minProfitWeth = 0 on the closing leg closes at any result; the unwind relies
+  on it, while the normal back-run always passes a real minimum
 - onlyOwner plus reentrancy lock
-- profit is swept to the owner on the back-run; the float is never swept
+- only the gain above the cycle base is swept; the float is never swept
+- resetCycle() clears a dangling cycle but does not sell; sweepAll recovers tokens
 
 ## Expected reality
 
