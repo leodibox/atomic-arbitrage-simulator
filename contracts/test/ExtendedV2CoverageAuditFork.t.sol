@@ -152,7 +152,7 @@ contract ExtendedV2CoverageAuditForkTest is Test {
             address(bytes20(hex"7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9")), // AAVE
             address(bytes20(hex"5a98fcbea516cf06857215779fd812ca3bef1b32")), // LDO
             address(bytes20(hex"d533a949740bb3306d119cc777fa900ba034cd52")), // CRV
-            address(bytes20(hex"95ad61b0a150d79219dcf64e1e6cc01f0b64c4c")), // SHIB
+            address(bytes20(hex"95ad61b0a150d79219dcf64e1e6cc01f0b64c4ce")), // SHIB
             address(bytes20(hex"6982508145454ce325ddbe47a25d4ec3d2311933"))  // PEPE
         ];
         Counts memory total;
