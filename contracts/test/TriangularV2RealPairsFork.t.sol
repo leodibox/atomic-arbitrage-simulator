@@ -160,8 +160,6 @@ contract TriangularV2RealPairsForkTest is Test {
             if (gasUsd <= 10 * DOLLAR_E8) total.within10++;
             if (gasUsd <= 15 * DOLLAR_E8) total.within15++;
             if (gasUsd <= 20 * DOLLAR_E8) total.within20++;
-            emit log_named_uint("net_candidate_input_weth_wei", amount);
-            emit log_named_uint("net_candidate_output_weth_wei", afterC);
         }
         return total;
     }
