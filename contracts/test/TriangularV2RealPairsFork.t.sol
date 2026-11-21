@@ -133,7 +133,6 @@ contract TriangularV2RealPairsForkTest is Test {
 
     function _count(
         Pair memory a, Pair memory b, Pair memory c,
-        address firstToken, address secondToken,
         Cost memory cost, Result memory total
     ) private pure returns (Result memory) {
         // First/last WETH edges must each have >=25 WETH.
@@ -142,6 +141,14 @@ contract TriangularV2RealPairsForkTest is Test {
         if (!a.nonzero || !a.enoughWeth || !b.nonzero
             || !c.nonzero || !c.enoughWeth) return total;
         if (a.addr == b.addr || a.addr == c.addr || b.addr == c.addr) return total;
+        // Derive intermediate tokens from verified WETH edge metadata
+        // rather than passing duplicate token arguments into the EVM stack.
+        address firstToken = a.token0 == WETH ? a.token1 : a.token0;
+        address secondToken = c.token0 == WETH ? c.token1 : c.token0;
+        if (firstToken == secondToken || firstToken == WETH || secondToken == WETH)
+            return total;
+        if (!((b.token0 == firstToken && b.token1 == secondToken)
+            || (b.token1 == firstToken && b.token0 == secondToken))) return total;
         total.eligibleTriangles++;
         for (uint256 i; i < 10; ++i) {
             uint256 pct = i == 0 ? 100 : i == 1 ? 50 :
@@ -192,11 +199,11 @@ contract TriangularV2RealPairsForkTest is Test {
                 for (uint256 d; d < 2; ++d) {
                     total = _count(
                         wethA[a], cross[b], wethB[d],
-                        tokenA, tokenB, cost, total
+                        cost, total
                     );
                     total = _count(
                         wethB[a], cross[b], wethA[d],
-                        tokenB, tokenA, cost, total
+                        cost, total
                     );
                 }
             }
