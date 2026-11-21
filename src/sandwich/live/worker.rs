@@ -105,8 +105,8 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
     let conf = Confirm { executor: cfg.executor, owner: ctx.signer.address(), weth_float: float, token_float: U256::ZERO };
     let Some(sim_profit) = confirm(
         ctx.provider.clone(),
+        head,
         base_fee,
-        U256::ZERO,
         &tx,
         victim.pair,
         front_dir,
@@ -186,8 +186,8 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
             .relays
             .send_bundle(&BundleRequest {
                 txs: vec![front.clone(), victim_raw.clone().into(), back.clone()],
+                block: target,
                 reverting: vec![],
-                reverting: vec![victim_hash.clone()],
                 replacement_uuid: uuid.clone(),
             })
             .await;
