@@ -50,6 +50,11 @@ contract TriangularV2RealPairsForkTest is Test {
         bool nonzero;
         bool enoughWeth;
     }
+    struct Cost {
+        uint256 premiumBps;
+        uint256 gasWei;
+        uint256 gasUsdE8;
+    }
     struct Result {
         uint256 pairsFound;
         uint256 eligibleTriangles;
@@ -129,8 +134,7 @@ contract TriangularV2RealPairsForkTest is Test {
     function _count(
         Pair memory a, Pair memory b, Pair memory c,
         address firstToken, address secondToken,
-        uint256 premium, uint256 gasWei, uint256 gasUsd,
-        Result memory total
+        Cost memory cost, Result memory total
     ) private pure returns (Result memory) {
         // First/last WETH edges must each have >=25 WETH.
         // Middle non-WETH cross-token pair must be nonzero, with factory
@@ -152,14 +156,14 @@ contract TriangularV2RealPairsForkTest is Test {
             total.probes++;
             if (afterC <= amount) continue;
             total.grossPositive++;
-            uint256 premiumWei = (amount * premium + 9999) / 10000;
+            uint256 premiumWei = (amount * cost.premiumBps + 9999) / 10000;
             uint256 buffered = afterC * (10000 - HAIRCUT_BPS) / 10000;
-            if (buffered <= amount + premiumWei + gasWei) continue;
+            if (buffered <= amount + premiumWei + cost.gasWei) continue;
             total.netPositive++;
-            if (gasUsd <= 5 * DOLLAR_E8) total.within5++;
-            if (gasUsd <= 10 * DOLLAR_E8) total.within10++;
-            if (gasUsd <= 15 * DOLLAR_E8) total.within15++;
-            if (gasUsd <= 20 * DOLLAR_E8) total.within20++;
+            if (cost.gasUsdE8 <= 5 * DOLLAR_E8) total.within5++;
+            if (cost.gasUsdE8 <= 10 * DOLLAR_E8) total.within10++;
+            if (cost.gasUsdE8 <= 15 * DOLLAR_E8) total.within15++;
+            if (cost.gasUsdE8 <= 20 * DOLLAR_E8) total.within20++;
         }
         return total;
     }
@@ -172,6 +176,7 @@ contract TriangularV2RealPairsForkTest is Test {
         address[4] memory markets = [USDC, DAI, WBTC, LINK];
         address[2] memory factories = [UNI, SUSHI];
         Result memory total;
+        Cost memory cost = Cost(premium, gasWei, usdGas);
         // Cross-token pools plus WETH spokes. Six token combinations;
         // 2x2x2 factory combinations, both cyclic orientations each.
         for (uint256 i; i < markets.length; ++i) {
@@ -193,9 +198,9 @@ contract TriangularV2RealPairsForkTest is Test {
                     for (uint256 b; b < 2; ++b) {
                         for (uint256 c; c < 2; ++c) {
                             total = _count(wA[a], ab[b], wB[c],
-                                markets[i], markets[j], premium, gasWei, usdGas, total);
+                                markets[i], markets[j], cost, total);
                             total = _count(wB[a], ab[b], wA[c],
-                                markets[j], markets[i], premium, gasWei, usdGas, total);
+                                markets[j], markets[i], cost, total);
                         }
                     }
                 }
