@@ -4,6 +4,15 @@ use crate::arbitrage::state::{sync_topic, PoolState, ReserveCache};
 use crate::common::constants::WETH;
 use alloy::network::Ethereum;
 use alloy::primitives::Address;
+use alloy::sol;
+
+sol! {
+    #[sol(rpc)]
+    interface IV2Meta {
+        function token0() external view returns (address);
+        function token1() external view returns (address);
+    }
+}
 use alloy::providers::Provider;
 use alloy::rpc::types::Filter;
 use anyhow::Result;
@@ -76,7 +85,28 @@ impl Universe {
     ) -> Result<usize> {
         let block = provider.get_block_number().await?;
         self.set_head(block);
-        let discovered = discover_weth_v2(provider, block, cfg.min_pool_weth).await?;
+        let mut discovered = discover_weth_v2(provider, block, cfg.min_pool_weth).await?;
+        // Configured pools bypass the reserve floor: they are listed on purpose.
+        let extra: Vec<Address> = std::env::var("SANDWICH_EXTRA_POOLS")
+            .unwrap_or_default()
+            .split(',')
+            .filter_map(|v| v.trim().parse::<Address>().ok())
+            .collect();
+        for pair in &extra {
+            if discovered.iter().any(|(p, _, _)| p == pair) {
+                continue;
+            }
+            let meta = IV2Meta::new(*pair, provider.clone());
+            let (Ok(t0), Ok(t1)) = (meta.token0().call().await, meta.token1().call().await) else {
+                warn!(%pair, "extra pool unreadable; skipped");
+                continue;
+            };
+            if t0 != WETH && t1 != WETH {
+                warn!(%pair, "extra pool is not WETH paired; skipped");
+                continue;
+            }
+            discovered.push((*pair, t0, t1));
+        }
         if discovered.is_empty() {
             return Ok(0);
         }
