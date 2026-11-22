@@ -549,10 +549,19 @@ where
         } else {
             None
         };
+        let mut cross_touched = false;
+        if triggered_by_sync {
+            let guard = cache.read().await;
+            cross_touched = guard.values().any(|p| {
+                p.block == block
+                    && p.token0 != sandooo::common::constants::WETH
+                    && p.token1 != sandooo::common::constants::WETH
+            });
+        }
         // Two canonical 30-bps V2 swaps incur ~60 bps of swap fees before
         // gas. Require an observable >75 bps marginal dislocation to avoid
         // fetching a new snapshot for normal synchronized pool noise.
-        let significant_gap = gap_bps.is_some_and(|bps| bps >= 75);
+        let significant_gap = cross_touched || gap_bps.is_some_and(|bps| bps >= 75);
         if triggered_by_sync
             && (v2_compatible_gross_candidates > 0 || significant_gap)
             && last_event_net_screen_block != Some(block)
