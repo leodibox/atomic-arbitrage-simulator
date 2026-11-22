@@ -174,6 +174,7 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
     let uuid = new_uuid();
     let _victim_hash = format!("0x{}", hex::encode(tx.tx_hash().as_slice()));
 
+
     let mut front = Bytes::new();
     let mut back = Bytes::new();
     let mut target = head + 1;
@@ -202,6 +203,7 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
         };
         front = front_raw;
         back = back_raw;
+        if ctx.provider.get_balance(ctx.signer.address()).await.map(|b| b < U256::from(cfg.min_gas_wei)).unwrap_or(false) { warn!(floor = cfg.min_gas_wei, "gas floor hit; skipping this block"); break; }
         let outcomes = ctx
             .relays
             .send_bundle(&BundleRequest {

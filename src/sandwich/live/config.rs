@@ -54,6 +54,7 @@ pub struct SandwichConfig {
     pub dry_run: bool,
     pub max_inflight: usize,
     pub unwind_after_blocks: u64,
+    pub min_gas_wei: u64,
 }
 
 const DEFAULT_ROUTERS: [&str; 3] = [
@@ -158,6 +159,7 @@ impl SandwichConfig {
             dry_run: flag("SANDWICH_DRY_RUN", true),
             max_inflight: num("SANDWICH_MAX_INFLIGHT", 1)? as usize,
             unwind_after_blocks: num("SANDWICH_UNWIND_AFTER_BLOCKS", 3)?,
+            min_gas_wei: num("SANDWICH_MIN_GAS_WEI", 5_000_000_000_000_000)?,
         };
 
         if cfg.relays.is_empty() {
