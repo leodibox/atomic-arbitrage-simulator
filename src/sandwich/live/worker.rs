@@ -13,7 +13,7 @@ use crate::common::constants::WETH;
 use alloy::eips::{BlockNumberOrTag, Encodable2718};
 use alloy::consensus::Transaction as ConsensusTx;
 use alloy::network::{Ethereum, TransactionResponse};
-use alloy::primitives::{keccak256, Address, B256, U256};
+use alloy::primitives::{keccak256, Address, B256, Bytes, U256};
 use hex;
 use alloy::providers::Provider;
 use alloy::consensus::TxEnvelope;
@@ -61,7 +61,7 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
     }
 
     let uni = ctx.universe.clone();
-    let Some(victim) = decode(tx.input(), |a, b| uni.pair_for(a, b), WETH) else {
+    let Some(victim) = decode(tx.input(), tx.value(), |a, b| uni.pair_for(a, b), WETH) else {
         return;
     };
 
@@ -141,8 +141,11 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
         .unwrap_or_default();
     let share = sim_profit * U256::from(cfg.tip_bps) / U256::from(10_000u64);
     let cap = sim_profit * U256::from(cfg.max_tip_bps) / U256::from(10_000u64);
-    let tip = share.max(victim_tip + victim_tip / U256::from(10u64)).min(cap);
-    let gas_cost = U256::from(cfg.gas_units) * (base_fee + tip);
+    let gas = U256::from(cfg.gas_units);
+    let tip = (share / gas)
+        .max(victim_tip + victim_tip / U256::from(10u64))
+        .min(cap / gas);
+    let gas_cost = gas * (base_fee + tip);
     let revenue = sim_profit.saturating_sub(gas_cost);
     if revenue < cfg.min_revenue_weth {
         return;
@@ -160,33 +163,38 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
 
     let n = ctx.nonces.reserve(2).await;
     let (n0, n1) = (n[0], n[1]);
-    let front_cd = build_execute_calldata(
-        head + 1,
-        U256::ZERO,
-        &[(front_dir, victim.pair, token_in, p.front_amount)],
-    );
-    let back_cd = build_execute_calldata(
-        head + 1,
-        sim_profit * U256::from(95u64) / U256::from(100u64),
-        &[(!front_dir, victim.pair, token_out, p.back_amount)],
-    );
-
-    let Ok(front) = sign_execute(&ctx.signer, cfg.executor, front_cd, cfg.gas_units / 2, max_fee, tip, n0) else {
-        warn!("front signing failed");
-        return;
-    };
-    let Ok(back) = sign_execute(&ctx.signer, cfg.executor, back_cd, cfg.gas_units / 2, max_fee, tip, n1) else {
-        warn!("back signing failed");
-        return;
-    };
+    let min_profit = sim_profit * U256::from(95u64) / U256::from(100u64);
 
     let victim_raw = tx.inner.encoded_2718();
     let uuid = new_uuid();
     let _victim_hash = format!("0x{}", hex::encode(tx.tx_hash().as_slice()));
 
+    let mut front = Bytes::new();
+    let mut back = Bytes::new();
     let mut target = head + 1;
     let mut landed = false;
     for _ in 0..cfg.max_blocks {
+        // The contract pins block.number, so every retarget needs fresh bytes.
+        let front_cd = build_execute_calldata(
+            target,
+            U256::ZERO,
+            &[(front_dir, victim.pair, token_in, p.front_amount)],
+        );
+        let back_cd = build_execute_calldata(
+            target,
+            min_profit,
+            &[(!front_dir, victim.pair, token_out, p.back_amount)],
+        );
+        let Ok(front_raw) = sign_execute(&ctx.signer, cfg.executor, front_cd, cfg.gas_units / 2, max_fee, tip, n0) else {
+            warn!("front signing failed");
+            break;
+        };
+        let Ok(back_raw) = sign_execute(&ctx.signer, cfg.executor, back_cd, cfg.gas_units / 2, max_fee, tip, n1) else {
+            warn!("back signing failed");
+            break;
+        };
+        front = front_raw;
+        back = back_raw;
         let outcomes = ctx
             .relays
             .send_bundle(&BundleRequest {
@@ -218,6 +226,7 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
 
     if !landed {
         ctx.relays.cancel(&uuid, target).await;
+        ctx.nonces.release(&[n0, n1]).await;
         ctx.positions.lock().await.push(Position {
             token: token_out,
             pair: victim.pair,

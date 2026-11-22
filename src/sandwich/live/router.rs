@@ -1,4 +1,4 @@
-﻿use alloy::primitives::{Address, Bytes, U256};
+use alloy::primitives::{Address, Bytes, U256};
 
 const IN_TOKENS: [u8; 4] = [0x38, 0xed, 0x17, 0x39];
 const IN_TOKENS_FOT: [u8; 4] = [0x5c, 0x11, 0xd7, 0x95];
@@ -22,16 +22,16 @@ pub struct Victim {
 
 #[derive(Debug, Clone, Copy)]
 enum Shape {
-    In { amount: usize, limit: usize, path: usize },
+    In { amount: Option<usize>, limit: usize, path: usize },
     Out { desired: usize, max_in: usize, path: usize },
 }
 
 fn shape(s: &[u8]) -> Option<Shape> {
     let k: [u8; 4] = s.try_into().ok()?;
     Some(match k {
-        IN_TOKENS | IN_TOKENS_FOT => Shape::In { amount: 0, limit: 1, path: 2 },
-        IN_TOKENS_ETH | IN_TOKENS_ETH_FOT => Shape::In { amount: 0, limit: 1, path: 2 },
-        IN_ETH | IN_ETH_FOT => Shape::In { amount: 0, limit: 0, path: 1 },
+        IN_TOKENS | IN_TOKENS_FOT => Shape::In { amount: Some(0), limit: 1, path: 2 },
+        IN_TOKENS_ETH | IN_TOKENS_ETH_FOT => Shape::In { amount: Some(0), limit: 1, path: 2 },
+        IN_ETH | IN_ETH_FOT => Shape::In { amount: None, limit: 0, path: 1 },
         OUT_TOKENS => Shape::Out { desired: 0, max_in: 1, path: 2 },
         OUT_ETH => Shape::Out { desired: 0, max_in: 0, path: 1 },
         _ => return None,
@@ -58,7 +58,7 @@ fn path_at(d: &[u8], head: usize) -> Option<Vec<Address>> {
     Some(out)
 }
 
-pub fn decode<F>(input: &Bytes, pair_for: F, weth: Address) -> Option<Victim>
+pub fn decode<F>(input: &Bytes, value: U256, pair_for: F, weth: Address) -> Option<Victim>
 where
     F: Fn(Address, Address) -> Option<(Address, bool)>,
 {
@@ -70,7 +70,7 @@ where
     let body = &d[4..];
     let (pi, exact_out, amount_in, limit, desired_out) = match sh {
         Shape::In { amount, limit, path } => {
-            (path, false, word(body, amount)?, word(body, limit)?, U256::ZERO)
+            (path, false, match amount { Some(i) => word(body, i)?, None => value }, word(body, limit)?, U256::ZERO)
         }
         Shape::Out { desired, max_in, path } => {
             (path, true, U256::ZERO, word(body, max_in)?, word(body, desired)?)
@@ -92,10 +92,68 @@ where
     Some(Victim {
         pair,
         token0_is_main,
-        victim_buys: token_in == weth,
+        victim_buys: a == weth,
         amount_in,
         limit,
         exact_out,
         desired_out,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloy::primitives::address;
+
+    fn w() -> Address {
+        address!("C02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2")
+    }
+    fn t() -> Address {
+        address!("A0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48")
+    }
+    fn p() -> Address {
+        address!("B4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc")
+    }
+    fn lookup(a: Address, b: Address) -> Option<(Address, bool)> {
+        let _ = (a, b);
+        Some((p(), true))
+    }
+
+    #[test]
+    fn uses_msg_value_for_eth_in_swap() {
+        let mut out = Vec::new();
+        out.extend_from_slice(&IN_ETH);
+        out.extend_from_slice(&U256::from(900u64).to_be_bytes::<32>());
+        out.extend_from_slice(&U256::from(128u64).to_be_bytes::<32>());
+        out.extend_from_slice(&U256::from(0u64).to_be_bytes::<32>());
+        out.extend_from_slice(&U256::from(0u64).to_be_bytes::<32>());
+        out.extend_from_slice(&U256::from(2u64).to_be_bytes::<32>());
+        for a in [w(), t()] {
+            out.extend_from_slice(&[0u8; 12]);
+            out.extend_from_slice(a.as_slice());
+        }
+        let v = decode(&Bytes::from(out), U256::from(1_000u64), lookup, w()).unwrap();
+        assert_eq!(v.amount_in, U256::from(1_000u64));
+        assert_eq!(v.limit, U256::from(900u64));
+        assert!(v.victim_buys);
+    }
+
+    #[test]
+    fn reads_amount_from_calldata_for_token_in_swap() {
+        let mut out = Vec::new();
+        out.extend_from_slice(&IN_TOKENS);
+        out.extend_from_slice(&U256::from(1_000u64).to_be_bytes::<32>());
+        out.extend_from_slice(&U256::from(900u64).to_be_bytes::<32>());
+        out.extend_from_slice(&U256::from(160u64).to_be_bytes::<32>());
+        out.extend_from_slice(&U256::from(0u64).to_be_bytes::<32>());
+        out.extend_from_slice(&U256::from(0u64).to_be_bytes::<32>());
+        out.extend_from_slice(&U256::from(2u64).to_be_bytes::<32>());
+        for a in [t(), w()] {
+            out.extend_from_slice(&[0u8; 12]);
+            out.extend_from_slice(a.as_slice());
+        }
+        let v = decode(&Bytes::from(out), U256::ZERO, lookup, w()).unwrap();
+        assert_eq!(v.amount_in, U256::from(1_000u64));
+        assert!(!v.victim_buys);
+    }
 }

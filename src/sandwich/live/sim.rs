@@ -33,12 +33,13 @@ fn slot(holder: Address, index: u64) -> B256 {
     keccak256(buf)
 }
 
-fn tx_env(from: Address, to: Address, data: Bytes, gas: u64) -> revm::context::TxEnv {
+fn tx_env(from: Address, to: Address, data: Bytes, gas: u64, gas_price: u128) -> revm::context::TxEnv {
     let mut tx = revm::context::TxEnv::default();
     tx.caller = to_h160(from);
     tx.kind = TxKind::Call(to_h160(to));
     tx.data = data;
     tx.gas_limit = gas;
+    tx.gas_price = gas_price;
     tx
 }
 
@@ -76,6 +77,17 @@ pub async fn confirm<P: Provider<Ethereum> + Clone + 'static>(
             account_id: None,
         },
     );
+    let owner_live = db.basic(to_h160(c.owner)).ok().flatten();
+    db.insert_account_info(
+        to_h160(c.owner),
+        AccountInfo {
+            balance: U256::from(100_000_000_000_000_000_000u128),
+            nonce: owner_live.as_ref().map(|a| a.nonce).unwrap_or(0),
+            code_hash: owner_live.as_ref().map(|a| a.code_hash).unwrap_or(KECCAK_EMPTY),
+            code: owner_live.and_then(|a| a.code),
+            account_id: None,
+        },
+    );
     let _ = db.basic(to_h160(pair));
     let _ = db.basic(to_h160(token_in));
     let _ = db.basic(to_h160(token_out));
@@ -99,13 +111,30 @@ pub async fn confirm<P: Provider<Ethereum> + Clone + 'static>(
         .ok()
         .unwrap_or_default();
 
+    let mut data = Vec::with_capacity(36);
+    data.extend_from_slice(&[0x70u8, 0xa0, 0x82, 0x31]);
+    data.extend_from_slice(&[0u8; 12]);
+    data.extend_from_slice(c.executor.as_slice());
+    let pre = match evm
+        .transact_commit(tx_env(c.owner, token_out, Bytes::from(data), 30_000, base_fee.to::<u128>()))
+        .ok()?
+    {
+        ExecutionResult::Success { output, .. } => {
+            let d = output.data().as_ref();
+            if d.len() < 32 {
+                return None;
+            }
+            U256::from_be_slice(&d[..32])
+        }
+        _ => return None,
+    };
     let front = build_execute_calldata(block, U256::ZERO, &[(front_dir, pair, token_in, front_amount)]);
-    match evm.transact_commit(tx_env(c.owner, c.executor, front, 220_000)).ok()? {
+    match evm.transact_commit(tx_env(c.owner, c.executor, front, 220_000, base_fee.to::<u128>())).ok()? {
         ExecutionResult::Success { .. } => {}
         _ => return None,
     }
 
-    let mut vtx = tx_env(victim.from(), victim.to()?, victim.input().clone(), victim.gas_limit());
+    let mut vtx = tx_env(victim.from(), victim.to()?, victim.input().clone(), victim.gas_limit(), ConsensusTx::max_fee_per_gas(victim));
     vtx.gas_price = ConsensusTx::max_fee_per_gas(victim);
     vtx.value = victim.value();
     match evm.transact_commit(vtx).ok()? {
@@ -113,18 +142,30 @@ pub async fn confirm<P: Provider<Ethereum> + Clone + 'static>(
         _ => return None,
     }
 
-    let held = evm
-        .ctx
-        .journaled_state
-        .db_mut()
-        .storage(to_h160(token_out), slot(c.executor, 3).into())
-        .ok()?;
+    let mut data = Vec::with_capacity(36);
+    data.extend_from_slice(&[0x70u8, 0xa0, 0x82, 0x31]);
+    data.extend_from_slice(&[0u8; 12]);
+    data.extend_from_slice(c.executor.as_slice());
+    let post = match evm
+        .transact_commit(tx_env(c.owner, token_out, Bytes::from(data), 30_000, base_fee.to::<u128>()))
+        .ok()?
+    {
+        ExecutionResult::Success { output, .. } => {
+            let d = output.data().as_ref();
+            if d.len() < 32 {
+                return None;
+            }
+            U256::from_be_slice(&d[..32])
+        }
+        _ => return None,
+    };
+    let held = post.saturating_sub(pre);
     if held.is_zero() {
         return None;
     }
 
     let back = build_execute_calldata(block, min_profit, &[(!front_dir, pair, token_out, held)]);
-    match evm.transact_commit(tx_env(c.owner, c.executor, back, 220_000)).ok()? {
+    match evm.transact_commit(tx_env(c.owner, c.executor, back, 220_000, base_fee.to::<u128>())).ok()? {
         ExecutionResult::Success { .. } => {}
         _ => return None,
     }

@@ -71,7 +71,8 @@ pub fn spawn<P: Provider<Ethereum> + Clone + 'static>(
                     U256::ZERO,
                     &[(!p.token0_is_main, p.pair, p.token, sell)],
                 );
-                let nonce = match nonces.reserve(1).await.first() {
+                let reserved = nonces.reserve(1).await;
+                let nonce = match reserved.first() {
                     Some(n) => *n,
                     None => continue,
                 };
@@ -100,7 +101,10 @@ pub fn spawn<P: Provider<Ethereum> + Clone + 'static>(
                         info!(token = %p.token, "unwind submitted");
                         settled_keys.push(p.opened_block);
                     }
-                    Err(e) => warn!(%e, "unwind signing failed"),
+                    Err(e) => {
+                        nonces.release(&reserved).await;
+                        warn!(%e, "unwind signing failed");
+                    }
                 }
                 let _ = nonces.reconcile().await;
             }
