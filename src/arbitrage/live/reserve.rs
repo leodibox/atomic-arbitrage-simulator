@@ -79,7 +79,7 @@ pub fn acquire(dir: &Path, key: &ReservationKey) -> Result<Reservation> {
         .with_context(|| format!("cannot write {}", path.display()))?;
     file.sync_all()?;
     drop(file);
-    sync_dir(dir);
+    sync_dir(dir)?;
     Ok(Reservation { id, path, key: key.clone() })
 }
 
@@ -93,10 +93,18 @@ impl Reservation {
     }
 }
 
-fn sync_dir(dir: &Path) {
-    if let Ok(handle) = File::open(dir) {
-        let _ = handle.sync_all();
-    }
+#[cfg(unix)]
+fn sync_dir(dir: &Path) -> Result<()> {
+    File::open(dir)
+        .and_then(|handle| handle.sync_all())
+        .with_context(|| format!("cannot fsync directory {}", dir.display()))
+}
+
+#[cfg(not(unix))]
+fn sync_dir(_dir: &Path) -> Result<()> {
+    // FlushFileBuffers on a directory handle is unreliable on Windows; the
+    // deploy target is Linux, so the guarantee is enforced there.
+    Ok(())
 }
 
 /// Every reservation ever made in `dir`. The gate accepts only `1`, so archive
@@ -131,7 +139,7 @@ pub fn archive_all(dir: &Path, into: &Path) -> Result<u64> {
             moved += 1;
         }
     }
-    sync_dir(dir);
+    sync_dir(dir)?;
     Ok(moved)
 }
 

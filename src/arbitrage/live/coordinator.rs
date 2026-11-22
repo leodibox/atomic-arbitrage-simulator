@@ -116,6 +116,14 @@ impl LiveConfig {
     }
 }
 
+/// Wei of gas into units of `asset`, through the ETH/USD quote and the asset decimals.
+fn wei_to_asset(wei: U256, eth_usd_e8: U256, decimals: u8) -> U256 {
+    let numerator = wei
+        .saturating_mul(eth_usd_e8)
+        .saturating_mul(U256::from(10u64).pow(U256::from(decimals as u64)));
+    numerator / U256::from(10u64).pow(U256::from(26u64))
+}
+
 /// One candidate, end to end. Returns the stage that stopped it.
 pub async fn attempt<P: Provider<Ethereum> + Clone>(
     provider: &P,
@@ -142,9 +150,33 @@ pub async fn attempt<P: Provider<Ethereum> + Clone>(
         premium_bps: config.premium_bps,
         min_profit_after_gas_in_asset: config.min_profit_after_gas_in_asset,
     };
-    let cost = PreflightGas {
+    // First pass only learns which asset the loan uses: the gas figure is
+    // still wei here, which is correct only for an 18-decimal asset.
+    let probe = PreflightGas {
         gas_spend_wei: gas_spend,
         gas_cost_in_asset: gas_spend,
+        quoted_at_block: block,
+    };
+    let borrowed = match prepare_v2_flash_loan(cache, cycle, &limits, Some(&probe)) {
+        Ok(plan) => plan.asset,
+        Err(error) => return Ok(Attempt::stop(Stage::Prepare, error.to_string())),
+    };
+
+    let gas_quote = match quote::read_eth_usd(provider, block, header.header.timestamp).await {
+        Ok(gas_quote) => gas_quote,
+        Err(error) => return Ok(Attempt::stop(Stage::Quote, error.to_string())),
+    };
+    let quoted_at = std::time::Instant::now();
+
+    let decimals = crate::arbitrage::rpc::load_token_decimals(provider, [borrowed])
+        .await
+        .get(&borrowed)
+        .copied()
+        .unwrap_or(18);
+    let gas_cost_in_asset = wei_to_asset(gas_spend, gas_quote.eth_usd_e8, decimals);
+    let cost = PreflightGas {
+        gas_spend_wei: gas_spend,
+        gas_cost_in_asset,
         quoted_at_block: block,
     };
     let prepared = match prepare_v2_flash_loan(cache, cycle, &limits, Some(&cost)) {
@@ -153,15 +185,10 @@ pub async fn attempt<P: Provider<Ethereum> + Clone>(
     };
     let net = prepared
         .expected_gross_profit
-        .saturating_sub(gas_spend);
+        .saturating_sub(gas_cost_in_asset);
     let candidate = match ReadOnlyCandidate::from_preflight(1, block, &prepared, net) {
         Ok(candidate) => candidate,
         Err(error) => return Ok(Attempt::stop(Stage::Prepare, error.to_string())),
-    };
-
-    let gas_quote = match quote::read_eth_usd(provider, block, header.header.timestamp).await {
-        Ok(gas_quote) => gas_quote,
-        Err(error) => return Ok(Attempt::stop(Stage::Quote, error.to_string())),
     };
 
     let request = activation::ActivationRequest {
@@ -199,7 +226,7 @@ pub async fn attempt<P: Provider<Ethereum> + Clone>(
         onchain_pair_and_loan_caps_verified: true,
         route_profitable_after_all_costs: !net.is_zero(),
     };
-    let check = match quote::build_check(1, config.gas_units, max_fee, &gas_quote, evidence) {
+    let check = match quote::build_check(1, config.gas_units, max_fee, &gas_quote.aged(quoted_at.elapsed().as_secs()), evidence) {
         Ok(check) => check,
         Err(error) => return Ok(Attempt::stop(Stage::Gate, error.to_string())),
     };
