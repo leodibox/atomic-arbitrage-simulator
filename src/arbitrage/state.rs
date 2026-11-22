@@ -107,7 +107,7 @@ impl V3PoolState {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct ReserveCache {
     pools: HashMap<Address, PoolState>,
     v3_pools: HashMap<Address, V3PoolState>,

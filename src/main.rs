@@ -59,6 +59,8 @@ async fn main() -> anyhow::Result<()> {
             "Guarded executor public configuration INVALID; no execution permitted"),
     }
 
+    // Fail closed: never select the legacy pending-transaction strategy by
+
     // omission, typo, or an unknown value.
     let scan_config = std::env::var("POOL_SCAN_ENABLED").ok();
     let scan_enabled = parse_scan_enabled(scan_config.as_deref())?;
@@ -591,9 +593,9 @@ where
             if let (Some(live_config), Some(live_signer)) = (&live, &live_signer) {
                 if let Ok(Some(header)) = provider.get_block_by_number(block.into()).await {
                     if let Some(base_fee) = header.header.base_fee_per_gas {
-                        let guard = cache.read().await;
+                        let snapshot = cache.read().await.clone();
                         match sandooo::arbitrage::live::coordinator::attempt(
-                            &provider, live_signer, live_config, &guard, cycle, block, base_fee,
+                            &provider, live_signer, live_config, &snapshot, cycle, block, base_fee,
                         )
                         .await
                         {
