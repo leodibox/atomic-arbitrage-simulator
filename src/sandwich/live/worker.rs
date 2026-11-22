@@ -72,7 +72,11 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
         (other, WETH)
     };
 
-    if !victim.victim_buys || victim.amount_in < cfg.min_victim_weth {
+    if !victim.victim_buys {
+        return;
+    }
+    let victim_size = if victim.exact_out { victim.limit } else { victim.amount_in };
+    if victim_size < cfg.min_victim_weth {
         return;
     }
 

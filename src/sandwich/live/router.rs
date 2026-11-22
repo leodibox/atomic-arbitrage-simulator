@@ -23,7 +23,7 @@ pub struct Victim {
 #[derive(Debug, Clone, Copy)]
 enum Shape {
     In { amount: Option<usize>, limit: usize, path: usize },
-    Out { desired: usize, max_in: usize, path: usize },
+    Out { desired: usize, max_in: Option<usize>, path: usize },
 }
 
 fn shape(s: &[u8]) -> Option<Shape> {
@@ -32,8 +32,8 @@ fn shape(s: &[u8]) -> Option<Shape> {
         IN_TOKENS | IN_TOKENS_FOT => Shape::In { amount: Some(0), limit: 1, path: 2 },
         IN_TOKENS_ETH | IN_TOKENS_ETH_FOT => Shape::In { amount: Some(0), limit: 1, path: 2 },
         IN_ETH | IN_ETH_FOT => Shape::In { amount: None, limit: 0, path: 1 },
-        OUT_TOKENS => Shape::Out { desired: 0, max_in: 1, path: 2 },
-        OUT_ETH => Shape::Out { desired: 0, max_in: 0, path: 1 },
+        OUT_TOKENS => Shape::Out { desired: 0, max_in: Some(1), path: 2 },
+        OUT_ETH => Shape::Out { desired: 0, max_in: None, path: 1 },
         _ => return None,
     })
 }
@@ -73,7 +73,7 @@ where
             (path, false, match amount { Some(i) => word(body, i)?, None => value }, word(body, limit)?, U256::ZERO)
         }
         Shape::Out { desired, max_in, path } => {
-            (path, true, U256::ZERO, word(body, max_in)?, word(body, desired)?)
+            (path, true, U256::ZERO, match max_in { Some(i) => word(body, i)?, None => value }, word(body, desired)?)
         }
     };
     let path = path_at(body, pi)?;
@@ -155,5 +155,23 @@ mod tests {
         let v = decode(&Bytes::from(out), U256::ZERO, lookup, w()).unwrap();
         assert_eq!(v.amount_in, U256::from(1_000u64));
         assert!(!v.victim_buys);
+    }
+    #[test]
+    fn uses_msg_value_for_eth_out_swap() {
+        let mut out = Vec::new();
+        out.extend_from_slice(&OUT_ETH);
+        out.extend_from_slice(&U256::from(1_000u64).to_be_bytes::<32>());
+        out.extend_from_slice(&U256::from(128u64).to_be_bytes::<32>());
+        out.extend_from_slice(&U256::from(0u64).to_be_bytes::<32>());
+        out.extend_from_slice(&U256::from(0u64).to_be_bytes::<32>());
+        out.extend_from_slice(&U256::from(2u64).to_be_bytes::<32>());
+        for a in [w(), t()] {
+            out.extend_from_slice(&[0u8; 12]);
+            out.extend_from_slice(a.as_slice());
+        }
+        let v = decode(&Bytes::from(out), U256::from(500u64), lookup, w()).unwrap();
+        assert!(v.exact_out);
+        assert_eq!(v.limit, U256::from(500u64));
+        assert_eq!(v.desired_out, U256::from(1_000u64));
     }
 }
