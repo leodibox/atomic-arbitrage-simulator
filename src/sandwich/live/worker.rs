@@ -116,6 +116,7 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
         victim.pair,
         front_dir,
         p.front_amount,
+        p.back_amount,
         token_in,
         token_out,
         &conf,
@@ -163,7 +164,7 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
 
     let n = ctx.nonces.reserve(2).await;
     let (n0, n1) = (n[0], n[1]);
-    let min_profit = sim_profit * U256::from(95u64) / U256::from(100u64);
+    let min_profit = p.profit_weth * U256::from(95u64) / U256::from(100u64);
 
     let victim_raw = tx.inner.encoded_2718();
     let uuid = new_uuid();

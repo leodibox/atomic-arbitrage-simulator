@@ -52,6 +52,7 @@ pub async fn confirm<P: Provider<Ethereum> + Clone + 'static>(
     pair: Address,
     front_dir: bool,
     front_amount: U256,
+    back_amount: U256,
     token_in: Address,
     token_out: Address,
     c: &Confirm,
@@ -160,11 +161,11 @@ pub async fn confirm<P: Provider<Ethereum> + Clone + 'static>(
         _ => return None,
     };
     let held = post.saturating_sub(pre);
-    if held.is_zero() {
+    if held < back_amount {
         return None;
     }
 
-    let back = build_execute_calldata(block, min_profit, &[(!front_dir, pair, token_out, held)]);
+    let back = build_execute_calldata(block, min_profit, &[(!front_dir, pair, token_out, back_amount)]);
     match evm.transact_commit(tx_env(c.owner, c.executor, back, 220_000, base_fee.to::<u128>())).ok()? {
         ExecutionResult::Success { .. } => {}
         _ => return None,
