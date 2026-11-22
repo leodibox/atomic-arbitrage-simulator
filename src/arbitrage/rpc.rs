@@ -252,6 +252,21 @@ pub async fn discover_weth_v2<P: Provider<Ethereum> + Clone>(
         address!("2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599"), // WBTC
         address!("514910771AF9Ca656af840dff83E8264EcF986CA"), // LINK
         address!("1f9840a85d5aF5bf1D1762F925BDADdC4201F984"), // UNI
+        address!("6982508145454Ce325dDbE47a25d4ec3d2311933"), // PEPE
+        address!("7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9"), // AAVE
+        address!("D533a949740bb3306d119CC777fa900bA034cd52"), // CRV
+        address!("c00e94Cb662C3520282E6f5717214004A7f26888"), // COMP
+        address!("0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e"), // YFI
+        address!("808507121B80c02388fAd14726482e061B8da827"), // PENDLE
+        address!("5A98FcBEA516Cf06857215779Fd812CA3beF1B32"), // LDO
+        address!("6B3595068778DD592e39A122f4f5a5cF09C90fE2"), // SUSHI
+        address!("C18360217D8F7Ab5e7c516566761Ea12Ce7F9D72"), // ENS
+        address!("0F5D2fB29fb7d3CFeE444a200298f468908cC942"), // MANA
+        address!("c944E90C64B2c07662A292be6244BDf05Cda44a7"), // GRT
+        address!("04Fa0d235C4abf4BcF4787aF4CF447DE572eF828"), // UMA
+        address!("BB0E17EF65F82Ab018d8EDd776e8DD940327B28b"), // AXS
+        address!("7D1AfA7B718fb893dB30A3aBc0Cfc608AaCfeBB0"), // MATIC
+        address!("408e41876cCCDC0a322b998ad8485960982c4cD1"), // REN
     ];
     let mut pools = Vec::new();
     for factory in factories {

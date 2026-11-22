@@ -216,7 +216,7 @@ where
     } else {
         None
     };
-    let min_weth = alloy::primitives::U256::from(25) * pow10(18);
+    let min_weth = alloy::primitives::U256::from(8) * pow10(18);
     let configured_pairs: HashSet<_> = initial
         .pairs()
         .copied()
