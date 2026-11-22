@@ -70,13 +70,13 @@ pub fn sign_execute(
     Ok(unsigned.into_signed(signature).encoded_2718().into())
 }
 
-pub async fn cycle_open<P: Provider<Ethereum>>(provider: &P, executor: Address) -> bool {
+pub async fn cycle_open<P: Provider<Ethereum>>(provider: &P, executor: Address) -> Option<bool> {
     let req = TransactionRequest::default()
         .to(executor)
         .input(TransactionInput::both(Bytes::from(cycle_open_selector().to_vec())));
     match provider.call(req).await {
-        Ok(res) if res.len() >= 32 => res[31] == 1,
-        _ => false,
+        Ok(res) if res.len() >= 32 => Some(res[31] == 1),
+        _ => None,
     }
 }
 

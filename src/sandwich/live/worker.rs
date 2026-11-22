@@ -98,7 +98,7 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
         return;
     }
 
-    if cycle_open(&ctx.provider, cfg.executor).await {
+    if cycle_open(&ctx.provider, cfg.executor).await != Some(false) {
         return;
     }
 
