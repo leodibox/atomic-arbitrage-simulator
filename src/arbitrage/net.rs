@@ -48,7 +48,7 @@ impl NetScan {
             };
             if self.pairs.contains(&pool.pair)
                 && supports_legacy_v2_pool(pool)
-                && pool.block == block
+                && block.saturating_sub(pool.block) <= 2
                 && weth_reserve >= self.min_weth
                 && !pool.reserve0.is_zero()
                 && !pool.reserve1.is_zero()
@@ -81,7 +81,7 @@ impl NetScan {
             (1..=1_000).contains(&premium_bps) && !gas.is_zero(),
             "invalid Aave premium or gas"
         );
-        let loan_cap = self.min_weth / U256::from(100);
+        let loan_cap = self.min_weth / U256::from(5);
         let limits = ExecutionLimits {
             current_block: block,
             max_pool_age_blocks: 0,
