@@ -91,6 +91,8 @@ impl NetScan {
             premium_bps,
             min_profit_after_gas_in_asset: U256::from(min_profit.max(1)),
         };
+        // The scan is WETH-only, so wei and asset units coincide here. If the
+        // start-token list ever grows, this needs the oracle conversion.
         let cost = GasQuote {
             gas_spend_wei: gas,
             gas_cost_in_asset: gas,
