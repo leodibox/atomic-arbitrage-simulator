@@ -443,6 +443,47 @@ mod tests {
     }
 
     #[test]
+    fn finds_three_hop_cycle_with_mispriced_dai_weth_pool() {
+        use super::super::state::PoolState;
+
+        let usdc = address!("0000000000000000000000000000000000000101");
+        let dai = address!("0000000000000000000000000000000000000102");
+        let weth_unit = 10u128.pow(18);
+        let dai_unit = 10u128.pow(18);
+        let usdc_unit = 10u128.pow(6);
+        let mut cache = ReserveCache::default();
+        for (pair, token0, token1, reserve0, reserve1) in [
+            (address!("0000000000000000000000000000000000000201"),
+                WETH, usdc, 1_000 * weth_unit, 2_000_000 * usdc_unit),
+            (address!("0000000000000000000000000000000000000202"),
+                usdc, dai, 2_000_000 * usdc_unit, 2_000_000 * dai_unit),
+            (address!("0000000000000000000000000000000000000203"),
+                dai, WETH, 2_000_000 * dai_unit, 1_100 * weth_unit),
+        ] {
+            cache.insert(PoolState {
+                pair,
+                token0,
+                token1,
+                reserve0: U256::from(reserve0),
+                reserve1: U256::from(reserve1),
+                fee_bps: 30,
+                block: 100,
+            });
+        }
+
+        let cycles = find_cycles(&cache, &[WETH], U256::from(weth_unit), 3, U256::ZERO);
+        assert!(cycles.iter().any(|cycle| {
+            cycle.hops.len() == 3
+                && cycle.hops.iter().map(|hop| (hop.token_in, hop.token_out)).eq([
+                    (WETH, usdc),
+                    (usdc, dai),
+                    (dai, WETH),
+                ])
+                && !cycle.gross_profit.is_zero()
+        }));
+    }
+
+    #[test]
     fn optimizer_finds_real_reserve_based_positive_size_within_cap() {
         use super::super::state::PoolState;
         let token = address!("0000000000000000000000000000000000000101");
