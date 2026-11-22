@@ -302,7 +302,7 @@ where
                                 tip_wei: 2_000_000_000,
                                 slippage_bps: 10,
                                 min_weth,
-                                pairs: pairs.into_iter().map(|(pair, _, _)| pair).collect(),
+                                pairs: pairs.iter().map(|(pair, _, _)| *pair).chain(configured_pairs.iter().copied()).collect(),
                             });
                             (Ok(snapshot), true)
                         } else if expanded_allowlist == allowlist {
@@ -536,9 +536,9 @@ where
             None
         };
         // Two canonical 30-bps V2 swaps incur ~60 bps of swap fees before
-        // gas. Require an observable >65 bps marginal dislocation to avoid
+        // gas. Require an observable >75 bps marginal dislocation to avoid
         // fetching a new snapshot for normal synchronized pool noise.
-        let significant_gap = gap_bps.is_some_and(|bps| bps >= 65);
+        let significant_gap = gap_bps.is_some_and(|bps| bps >= 75);
         if triggered_by_sync
             && (v2_compatible_gross_candidates > 0 || significant_gap)
             && last_event_net_screen_block != Some(block)

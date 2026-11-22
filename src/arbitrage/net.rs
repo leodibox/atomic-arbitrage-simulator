@@ -49,7 +49,7 @@ impl NetScan {
             if self.pairs.contains(&pool.pair)
                 && supports_legacy_v2_pool(pool)
                 && block.saturating_sub(pool.block) <= 2
-                && weth_reserve >= self.min_weth
+                && ((pool.token0 != WETH && pool.token1 != WETH) || weth_reserve >= self.min_weth)
                 && !pool.reserve0.is_zero()
                 && !pool.reserve1.is_zero()
             {
