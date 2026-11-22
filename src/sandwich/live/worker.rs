@@ -239,7 +239,7 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
     let _ = ctx.nonces.reconcile().await;
 }
 
-async fn receipt_success<P: Provider<Ethereum>>(provider: &P, hash: B256) -> bool {
+pub async fn receipt_success<P: Provider<Ethereum>>(provider: &P, hash: B256) -> bool {
     match provider.get_transaction_receipt(hash).await {
         Ok(Some(receipt)) => receipt.status(),
         _ => false,

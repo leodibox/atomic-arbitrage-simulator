@@ -34,13 +34,20 @@ impl NonceManager {
     /// proven consumed by reconcile.
     pub async fn reserve(&self, count: u64) -> Vec<u64> {
         let _g = self.gate.lock().await;
-        let start = self.next.fetch_add(count, Ordering::SeqCst);
-        let reserved: Vec<u64> = (start..start + count).collect();
         let mut live = self.live.lock().await;
-        for nonce in &reserved {
-            live.insert(*nonce);
+        let mut start = self.next.load(Ordering::SeqCst);
+        loop {
+            let end = start + count;
+            if (start..end).any(|nonce| live.contains(&nonce)) {
+                start += 1;
+                continue;
+            }
+            for nonce in start..end {
+                live.insert(nonce);
+            }
+            self.next.store(end, Ordering::SeqCst);
+            return (start..end).collect();
         }
-        reserved
     }
 
     /// Give back nonces that were never broadcast, so no gap survives.
