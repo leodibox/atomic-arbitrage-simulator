@@ -29,6 +29,7 @@ pub enum Stage {
     Prepare,
     Quote,
     Activation,
+    GasFloor,
     Simulation,
     Gate,
     Reservation,
@@ -55,6 +56,7 @@ pub struct LiveConfig {
     pub recipient: Address,
     pub runtime_keccak: B256,
     pub gas_units: u64,
+    pub min_gas_wei: U256,
     pub tip_wei: U256,
     pub min_profit_after_gas_in_asset: U256,
     pub max_flash_loan: U256,
@@ -103,6 +105,7 @@ impl LiveConfig {
                 .parse()
                 .context("GUARDED_RUNTIME_KECCAK256 is not a hash")?,
             gas_units: u64_var("ARB_GAS_UNITS", 900_000)?,
+            min_gas_wei: u256_var("ARB_MIN_GAS_WEI", "2000000000000000")?,
             tip_wei: u256_var("ARB_TIP_WEI", "1000000000")?,
             min_profit_after_gas_in_asset: u256_var("ARB_MIN_PROFIT_AFTER_GAS", "1")?,
             max_flash_loan: u256_var("ARB_MAX_FLASH_LOAN", "250000000000000000")?,
@@ -204,6 +207,25 @@ pub async fn attempt<P: Provider<Ethereum> + Clone>(
     };
     if let Err(error) = activation::verify_permission(provider, &request).await {
         return Ok(Attempt::stop(Stage::Activation, error.to_string()));
+    }
+
+    let balance = match provider.get_balance(signer.address()).await {
+        Ok(balance) => balance,
+        Err(error) => {
+            return Ok(Attempt::stop(
+                Stage::GasFloor,
+                format!("cannot verify signer ETH balance: {error}"),
+            ));
+        }
+    };
+    if balance < config.min_gas_wei {
+        return Ok(Attempt::stop(
+            Stage::GasFloor,
+            format!(
+                "signer ETH balance {balance} wei is below ARB_MIN_GAS_WEI ({} wei)",
+                config.min_gas_wei
+            ),
+        ));
     }
 
     let nonce = provider.get_transaction_count(signer.address()).await?;
