@@ -74,6 +74,9 @@ pub fn spawn<P: Provider<Ethereum> + Clone + 'static>(
                 }
             }
             inflight = keep;
+            // A position already being unwound must not be selected again.
+            let busy: Vec<(Address, Address, u64)> =
+                inflight.iter().map(|f| key(&f.position)).collect();
 
             let mut due: Vec<Position> = {
                 let guard = positions.lock().await;
@@ -84,6 +87,7 @@ pub fn spawn<P: Provider<Ethereum> + Clone + 'static>(
                     .collect()
             };
             due.extend(retry);
+            due.retain(|p| !busy.contains(&key(p)));
 
             for p in due {
                 let held = match erc20_balance(&provider, p.token, cfg.executor).await {

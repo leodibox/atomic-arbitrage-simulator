@@ -179,6 +179,7 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
     let mut target = head + 1;
     let mut landed = false;
     let mut unknown = false;
+    let mut arm = false;
     for _ in 0..cfg.max_blocks {
         // The contract pins block.number, so every retarget needs fresh bytes.
         let front_cd = build_execute_calldata(
@@ -227,7 +228,9 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
         if ctx.universe.head() <= target {
             warn!(block = target, "block never advanced, outcome unknown");
             unknown = true;
-            break;
+            arm = true;
+            target = ctx.universe.head() + 1;
+            continue;
         }
         let front_state = receipt_state(&ctx.provider, keccak256(&front)).await;
         let back_state = receipt_state(&ctx.provider, keccak256(&back)).await;
@@ -239,8 +242,9 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
         if front_state.is_none() || back_state.is_none() {
             unknown = true;
         }
+        // Only arm an unwind when the opening leg may actually have landed.
+        arm = front_state != Some(false);
         break;
-        target = ctx.universe.head() + 1;
     }
 
     if !landed {
@@ -248,14 +252,15 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
         if !unknown {
             ctx.nonces.release(&n).await;
         }
-        ctx.nonces.release(&[n0, n1]).await;
-        ctx.positions.lock().await.push(Position {
+        if arm {
+            ctx.positions.lock().await.push(Position {
             token: token_out,
             pair: victim.pair,
             opened_block: head,
             token0_is_main: victim.token0_is_main,
             amount: p.back_amount,
-        });
+            });
+        }
         info!(pair = %victim.pair, "window expired, unwind armed");
     }
     let _ = ctx.nonces.reconcile().await;
