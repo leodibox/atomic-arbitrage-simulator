@@ -2,7 +2,7 @@ use super::{
     candidate::ReadOnlyCandidate,
     find_cycles,
     preflight::{prepare_v2_flash_loan, supports_legacy_v2_pool, ExecutionLimits, GasQuote},
-    ReserveCache,
+    Cycle, ReserveCache,
 };
 use crate::common::constants::WETH;
 use alloy::{
@@ -30,6 +30,16 @@ pub struct NetScan {
     pub pairs: HashSet<Address>,
 }
 
+pub struct NetScreen {
+    pub block: u64,
+    pub base_fee_per_gas: u64,
+    pub block_timestamp: u64,
+    pub premium_bps: u64,
+    pub slippage_bps: u64,
+    pub min_profit_after_gas: U256,
+    pub cycles: Vec<Cycle>,
+}
+
 impl NetScan {
     pub async fn report<P: Provider<Ethereum> + Clone>(
         &self,
@@ -38,7 +48,7 @@ impl NetScan {
         block: u64,
         min_profit: u64,
         max_hops: usize,
-    ) -> Result<()> {
+    ) -> Result<NetScreen> {
         let mut verified = ReserveCache::default();
         for pool in snapshot.values() {
             let weth_reserve = if pool.token0 == WETH {
@@ -167,9 +177,9 @@ impl NetScan {
                     "read-only prepared candidate; exact execution simulation pending");
                 accepted_probe_sizes += 1;
                 let route: Vec<_> = cycle.hops.iter().map(|hop| hop.pair).collect();
-                let best = positive.entry(route).or_insert((net, amount));
+                let best = positive.entry(route).or_insert_with(|| (net, cycle.clone()));
                 if net > best.0 {
-                    *best = (net, amount);
+                    *best = (net, cycle);
                 }
             }
         }
@@ -210,11 +220,27 @@ impl NetScan {
             rejected_by_preflight, accepted_probe_sizes,
             gas_units_budget = self.gas_units, gas_budget_wei = %gas, premium_bps,
             slippage_bps = self.slippage_bps, "read-only WETH V2 net screen");
-        for (route, (net, amount)) in positive {
-            info!(block, ?route, loan_wei = %amount, estimated_net_wei = %net,
-                "positive estimated net for V2-compatible route; executor simulation pending");
-        }
-        Ok(())
+        let mut ranked: Vec<_> = positive.into_iter().collect();
+        ranked.sort_unstable_by(|(route_a, (net_a, _)), (route_b, (net_b, _))| {
+            net_b.cmp(net_a).then_with(|| route_a.cmp(route_b))
+        });
+        let cycles = ranked
+            .into_iter()
+            .map(|(route, (net, cycle))| {
+                info!(block, ?route, loan_wei = %cycle.amount_in, estimated_net_wei = %net,
+                    "positive estimated net for V2-compatible route; executor simulation pending");
+                cycle
+            })
+            .collect();
+        Ok(NetScreen {
+            block,
+            base_fee_per_gas: base_fee,
+            block_timestamp: header.header.timestamp,
+            premium_bps,
+            slippage_bps: self.slippage_bps,
+            min_profit_after_gas: limits.min_profit_after_gas_in_asset,
+            cycles,
+        })
     }
 }
 
@@ -390,7 +416,15 @@ fn v2_weth_probe_amounts(loan_cap: U256) -> Vec<U256> {
     amounts
 }
 
-fn conservative_net(
+/// Amount withheld from the optimistic final output, rounded up.
+pub(super) fn slippage_haircut(out: U256, slippage_bps: u64) -> Option<U256> {
+    let bps = U256::from(10_000);
+    let retained_bps = bps.checked_sub(U256::from(slippage_bps))?;
+    let buffered = out.checked_mul(retained_bps)? / bps;
+    out.checked_sub(buffered)
+}
+
+pub(super) fn conservative_net(
     out: U256,
     loan: U256,
     premium_bps: u64,
@@ -398,7 +432,7 @@ fn conservative_net(
     slippage_bps: u64,
 ) -> Option<U256> {
     let bps = U256::from(10_000);
-    let buffered = out * (bps - U256::from(slippage_bps)) / bps;
+    let buffered = out.checked_sub(slippage_haircut(out, slippage_bps)?)?;
     let premium = (loan * U256::from(premium_bps) + bps - U256::from(1)) / bps;
     buffered
         .checked_sub(loan + premium + gas)

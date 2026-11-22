@@ -7,11 +7,13 @@
 use super::{activation, quote, reserve, sender};
 use crate::arbitrage::{
     candidate::ReadOnlyCandidate,
+    net::{conservative_net, slippage_haircut, NetScreen},
     one_shot::{assess_after_reservation, assess_before_reservation},
     preflight::{prepare_v2_flash_loan, ExecutionLimits, GasQuote as PreflightGas},
     state::ReserveCache,
     Cycle,
 };
+use crate::common::constants::WETH;
 use alloy::{
     network::Ethereum,
     primitives::{address, Address, B256, U256},
@@ -113,18 +115,20 @@ impl LiveConfig {
             slippage_bps: u64_var("ARB_SLIPPAGE_BPS", 10)?,
         };
         ensure!(config.gas_units > 0, "ARB_GAS_UNITS must be positive");
+        ensure!(config.slippage_bps <= 10_000, "ARB_SLIPPAGE_BPS must not exceed 10000");
         ensure!(!config.tip_wei.is_zero(), "ARB_TIP_WEI must be positive");
         ensure!(config.max_flash_loan > U256::ZERO, "ARB_MAX_FLASH_LOAN must be positive");
         Ok(Some(config))
     }
 }
 
-/// Wei of gas into units of `asset`, through the ETH/USD quote and the asset decimals.
-fn wei_to_asset(wei: U256, eth_usd_e8: U256, decimals: u8) -> U256 {
-    let numerator = wei
-        .saturating_mul(eth_usd_e8)
-        .saturating_mul(U256::from(10u64).pow(U256::from(decimals as u64)));
-    numerator / U256::from(10u64).pow(U256::from(26u64))
+fn weth_gas_quote(cycle: &Cycle, gas_spend_wei: U256, block: u64) -> Result<PreflightGas> {
+    ensure!(cycle.start == WETH, "live arbitrage requires a WETH loan asset");
+    Ok(PreflightGas {
+        gas_spend_wei,
+        gas_cost_in_asset: gas_spend_wei,
+        quoted_at_block: block,
+    })
 }
 
 /// One candidate, end to end. Returns the stage that stopped it.
@@ -134,61 +138,42 @@ pub async fn attempt<P: Provider<Ethereum> + Clone>(
     config: &LiveConfig,
     cache: &ReserveCache,
     cycle: &Cycle,
-    block: u64,
-    base_fee_per_gas: u64,
+    screen: &NetScreen,
 ) -> Result<Attempt> {
-    let max_fee = U256::from(base_fee_per_gas) * U256::from(2u64) + config.tip_wei;
+    let block = screen.block;
+    let max_fee = U256::from(screen.base_fee_per_gas) * U256::from(2u64) + config.tip_wei;
     let gas_spend = U256::from(config.gas_units) * max_fee;
+    let cost = weth_gas_quote(cycle, gas_spend, block)?;
+    let slippage_bps = config.slippage_bps.max(screen.slippage_bps);
+    let slippage = slippage_haircut(cycle.amount_out, slippage_bps)
+        .context("invalid slippage haircut")?;
+    let net_floor = config.min_profit_after_gas_in_asset.max(screen.min_profit_after_gas);
+    // Preflight checks the unbuffered route output, so reserve the haircut in
+    // the floor that preflight checks and encodes into the executor's calldata.
 
-    let header = provider
-        .get_block_by_number(block.into())
-        .await?
-        .context("pinned block unavailable")?;
     let limits = ExecutionLimits {
         current_block: block,
         max_pool_age_blocks: 0,
         max_hops: 3,
         max_flash_loan: config.max_flash_loan,
         max_gas_spend_wei: gas_spend,
-        premium_bps: config.premium_bps,
-        min_profit_after_gas_in_asset: config.min_profit_after_gas_in_asset,
-    };
-    // First pass only learns which asset the loan uses: the gas figure is
-    // still wei here, which is correct only for an 18-decimal asset.
-    let probe = PreflightGas {
-        gas_spend_wei: gas_spend,
-        gas_cost_in_asset: gas_spend,
-        quoted_at_block: block,
-    };
-    let borrowed = match prepare_v2_flash_loan(cache, cycle, &limits, Some(&probe)) {
-        Ok(plan) => plan.asset,
-        Err(error) => return Ok(Attempt::stop(Stage::Prepare, error.to_string())),
-    };
-
-    let gas_quote = match quote::read_eth_usd(provider, block, header.header.timestamp).await {
-        Ok(gas_quote) => gas_quote,
-        Err(error) => return Ok(Attempt::stop(Stage::Quote, error.to_string())),
-    };
-    let quoted_at = std::time::Instant::now();
-
-    let decimals = crate::arbitrage::rpc::load_token_decimals(provider, [borrowed])
-        .await
-        .get(&borrowed)
-        .copied()
-        .unwrap_or(18);
-    let gas_cost_in_asset = wei_to_asset(gas_spend, gas_quote.eth_usd_e8, decimals);
-    let cost = PreflightGas {
-        gas_spend_wei: gas_spend,
-        gas_cost_in_asset,
-        quoted_at_block: block,
+        premium_bps: config.premium_bps.max(screen.premium_bps),
+        min_profit_after_gas_in_asset: net_floor.checked_add(slippage)
+            .context("slippage-adjusted profit floor overflow")?,
     };
     let prepared = match prepare_v2_flash_loan(cache, cycle, &limits, Some(&cost)) {
         Ok(plan) => plan,
         Err(error) => return Ok(Attempt::stop(Stage::Prepare, error.to_string())),
     };
-    let net = prepared
-        .expected_gross_profit
-        .saturating_sub(gas_cost_in_asset);
+    let net = conservative_net(
+        cycle.amount_out, cycle.amount_in, limits.premium_bps, gas_spend, slippage_bps,
+    ).context("live cycle has no modeled net profit")?;
+    // The USD quote is used only for the independent cumulative gas budget.
+    let gas_quote = match quote::read_eth_usd(provider, block, screen.block_timestamp).await {
+        Ok(gas_quote) => gas_quote,
+        Err(error) => return Ok(Attempt::stop(Stage::Quote, error.to_string())),
+    };
+    let quoted_at = std::time::Instant::now();
     let candidate = match ReadOnlyCandidate::from_preflight(1, block, &prepared, net) {
         Ok(candidate) => candidate,
         Err(error) => return Ok(Attempt::stop(Stage::Prepare, error.to_string())),
@@ -287,4 +272,28 @@ pub async fn attempt<P: Provider<Ethereum> + Clone>(
         Stage::Broadcast,
         format!("{hash:#x} {outcome:?}"),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn weth_gas_cost_uses_the_same_wei_as_native_eth() {
+        let mut cycle = Cycle {
+            start: WETH,
+            amount_in: U256::ZERO,
+            amount_out: U256::ZERO,
+            gross_profit: U256::ZERO,
+            hops: Vec::new(),
+            freshest_block: 100,
+        };
+        let gas = U256::from(2_000_000_000_000_000u64);
+        let quote = weth_gas_quote(&cycle, gas, 100).unwrap();
+        assert_eq!(quote.gas_spend_wei, gas);
+        assert_eq!(quote.gas_cost_in_asset, gas);
+
+        cycle.start = Address::repeat_byte(1);
+        assert!(weth_gas_quote(&cycle, gas, 100).is_err());
+    }
 }

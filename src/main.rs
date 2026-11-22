@@ -273,6 +273,7 @@ where
     );
 
     loop {
+        let mut live_screen = None;
         if refresh_due {
             refresh_due = false;
             match provider.get_block_number().await {
@@ -341,12 +342,13 @@ where
                                     sim_min_profit,
                                     sim_max_hops,
                                 );
-                                if !matches!(
-                                    tokio::time::timeout(std::time::Duration::from_secs(5), priced)
-                                        .await,
-                                    Ok(Ok(()))
-                                ) {
-                                    warn!(block = b, "V2 net estimates unavailable; gas or premium could not be verified");
+                                match tokio::time::timeout(Duration::from_secs(5), priced).await {
+                                    Ok(Ok(screen)) => {
+                                        if live.is_some() && !screen.cycles.is_empty() {
+                                            live_screen = Some((fresh.clone(), screen));
+                                        }
+                                    }
+                                    _ => warn!(block = b, "V2 net estimates unavailable; gas or premium could not be verified"),
                                 }
                             }
                             let mut guard = cache.write().await;
@@ -578,15 +580,21 @@ where
                             let fresh = load_allowlisted_reserves(
                                 &provider, &expanded_allowlist, block,
                             ).await?;
-                            net_scan.report(
+                            let screen = net_scan.report(
                                 &provider, &fresh, block, sim_min_profit, sim_max_hops,
-                            ).await
+                            ).await?;
+                            Ok::<_, anyhow::Error>((fresh, screen))
                         };
-                        if !matches!(tokio::time::timeout(Duration::from_secs(5), check).await,
-                            Ok(Ok(())))
-                        {
-                            warn!(block, "event candidate net screen inconclusive; no authorization");
-                        }
+                        live_screen = match tokio::time::timeout(Duration::from_secs(5), check).await {
+                            Ok(Ok((fresh, screen))) if live.is_some() && !screen.cycles.is_empty() => {
+                                Some((fresh, screen))
+                            }
+                            Ok(Ok(_)) => None,
+                            _ => {
+                                warn!(block, "event candidate net screen inconclusive; no authorization");
+                                None
+                            }
+                        };
                     }
                     Ok(head) => info!(block, head,
                         "event candidate already superseded; skipping stale net estimate"),
@@ -598,24 +606,31 @@ where
             }
         }
 
-        for cycle in cycles.iter().take(5) {
-            if let (Some(live_config), Some(live_signer)) = (&live, &live_signer) {
-                if let Ok(Some(header)) = provider.get_block_by_number(block.into()).await {
-                    if let Some(base_fee) = header.header.base_fee_per_gas {
-                        let snapshot = cache.read().await.clone();
-                        match sandooo::arbitrage::live::coordinator::attempt(
-                            &provider, live_signer, live_config, &snapshot, cycle, block, base_fee,
-                        )
-                        .await
-                        {
-                            Ok(attempt) => {
-                                info!(stage = ?attempt.stage, detail = %attempt.detail, "live attempt")
-                            }
-                            Err(error) => warn!(%error, "live attempt failed"),
-                        }
+        if let (Some(live_config), Some(live_signer), Some((snapshot, screen))) =
+            (&live, &live_signer, live_screen)
+        {
+            for cycle in screen.cycles.iter().take(5) {
+                match provider.get_block_number().await {
+                    Ok(head) if head == screen.block => {}
+                    _ => {
+                        warn!(block = screen.block, "screened block is no longer current or could not be verified");
+                        break;
                     }
                 }
+                match sandooo::arbitrage::live::coordinator::attempt(
+                    &provider, live_signer, live_config, &snapshot, cycle, &screen,
+                )
+                .await
+                {
+                    Ok(attempt) => {
+                        info!(stage = ?attempt.stage, detail = %attempt.detail, "live attempt")
+                    }
+                    Err(error) => warn!(%error, "live attempt failed"),
+                }
             }
+        }
+
+        for cycle in cycles.iter().take(5) {
             // Aave premium is in loan asset raw units. This is intentionally
             // PRE-GAS only: real net profit has not been independently verified.
             let premium = cycle.amount_in * alloy::primitives::U256::from(premium_bps)
