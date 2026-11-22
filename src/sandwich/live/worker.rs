@@ -173,6 +173,7 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
     let mut back = Bytes::new();
     let mut target = head + 1;
     let mut landed = false;
+    let mut unknown = false;
     for _ in 0..cfg.max_blocks {
         // The contract pins block.number, so every retarget needs fresh bytes.
         let front_cd = build_execute_calldata(
@@ -211,21 +212,37 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
             info!(block = target, accepted, "bundle sent");
         }
 
-        tokio::time::sleep(std::time::Duration::from_secs(11)).await;
-        if ctx.universe.head() > target {
-            let front_ok = receipt_success(&ctx.provider, keccak256(&front)).await;
-            let back_ok = receipt_success(&ctx.provider, keccak256(&back)).await;
-            landed = front_ok && back_ok;
-            if !landed {
-                warn!(front_ok, back_ok, "target block passed without both legs landing");
-            }
+        // Do not re-sign over the hashes we still have to verify: wait the
+        // target block out, then judge both legs by receipt.
+        let mut waited = 0u32;
+        while ctx.universe.head() <= target && waited < 6 {
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+            waited += 1;
+        }
+        if ctx.universe.head() <= target {
+            warn!(block = target, "block never advanced, outcome unknown");
+            unknown = true;
             break;
         }
+        let front_state = receipt_state(&ctx.provider, keccak256(&front)).await;
+        let back_state = receipt_state(&ctx.provider, keccak256(&back)).await;
+        if front_state == Some(true) && back_state == Some(true) {
+            landed = true;
+            break;
+        }
+        warn!(?front_state, ?back_state, "target block passed without both legs landing");
+        if front_state.is_none() || back_state.is_none() {
+            unknown = true;
+        }
+        break;
         target = ctx.universe.head() + 1;
     }
 
     if !landed {
         ctx.relays.cancel(&uuid, target).await;
+        if !unknown {
+            ctx.nonces.release(&n).await;
+        }
         ctx.nonces.release(&[n0, n1]).await;
         ctx.positions.lock().await.push(Position {
             token: token_out,
@@ -237,6 +254,15 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
         info!(pair = %victim.pair, "window expired, unwind armed");
     }
     let _ = ctx.nonces.reconcile().await;
+}
+
+/// Some(true) mined and succeeded, Some(false) mined and reverted or never mined, None when the RPC could not answer.
+pub async fn receipt_state<P: Provider<Ethereum>>(provider: &P, hash: B256) -> Option<bool> {
+    match provider.get_transaction_receipt(hash).await {
+        Ok(Some(receipt)) => Some(receipt.status()),
+        Ok(None) => Some(false),
+        Err(_) => None,
+    }
 }
 
 pub async fn receipt_success<P: Provider<Ethereum>>(provider: &P, hash: B256) -> bool {
