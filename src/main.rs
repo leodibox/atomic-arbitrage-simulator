@@ -328,10 +328,14 @@ where
                             expanded_allowlist = expanded;
                             decimals_map.extend(decimals);
                             added_pairs = added;
+                            let slippage_bps = std::env::var("SIM_SLIPPAGE_BPS")
+                                .ok()
+                                .and_then(|v| v.parse::<u64>().ok())
+                                .unwrap_or(5);
                             net_scan = Some(NetScan {
                                 gas_units,
                                 tip_wei: 2_000_000_000,
-                                slippage_bps: 10,
+                                slippage_bps,
                                 min_weth,
                                 pairs: pairs
                                     .iter()

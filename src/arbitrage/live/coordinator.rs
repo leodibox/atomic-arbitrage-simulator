@@ -181,11 +181,19 @@ pub async fn attempt<P: Provider<Ethereum> + Clone>(
     };
     let quoted_at = std::time::Instant::now();
 
-    let decimals = crate::arbitrage::rpc::load_token_decimals(provider, [borrowed])
+    let decimals = match crate::arbitrage::rpc::load_token_decimals(provider, [borrowed])
         .await
         .get(&borrowed)
         .copied()
-        .unwrap_or(18);
+    {
+        Some(decimals) => decimals,
+        None => {
+            return Ok(Attempt::stop(
+                Stage::Quote,
+                "missing token decimals".to_string(),
+            ))
+        }
+    };
     let gas_cost_in_asset = wei_to_asset(gas_spend, gas_quote.eth_usd_e8, decimals);
     let cost = PreflightGas {
         gas_spend_wei: gas_spend,
