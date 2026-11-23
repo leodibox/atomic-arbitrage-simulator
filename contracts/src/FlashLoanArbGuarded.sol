@@ -23,10 +23,26 @@ interface IGuardedV2Pair {
     function token1() external view returns (address);
 }
 
+interface IGuardedV3Pool {
+    function token0() external view returns (address);
+    function token1() external view returns (address);
+    function fee() external view returns (uint24);
+    function tickSpacing() external view returns (int24);
+    function swap(
+        address recipient,
+        bool zeroForOne,
+        int256 amountSpecified,
+        uint160 sqrtPriceLimitX96,
+        bytes calldata data
+    ) external returns (int256 amount0, int256 amount1);
+}
+
 contract FlashLoanArbGuarded {
     address public immutable owner;
     address public immutable profitRecipient;
     IGuardedAavePool public immutable pool;
+    address private v3PoolInFlight;
+    mapping(address => bool) public approvedV3Pool;
     bool public paused = true;
     // Opt-in only: funds stay in the contract unless the owner explicitly
     // enables automatic payout to the immutable recipient after Aave repays.
@@ -131,7 +147,7 @@ contract FlashLoanArbGuarded {
         if (asset == address(0) || asset.code.length == 0) revert BadAsset();
         if (maxLoanRaw[asset] == 0 || amount == 0 || amount > maxLoanRaw[asset])
             revert LoanCapExceeded();
-        if (minProfit == 0 || (path.length != 42 && path.length != 63))
+        if (minProfit == 0 || (path.length != 44 && path.length != 66))
             revert BadPath();
 
         // FlashLoanSimple repays by pulling amount+premium AFTER executeOperation
@@ -171,7 +187,7 @@ contract FlashLoanArbGuarded {
             revert LoanCapExceeded();
 
         (bytes memory path, uint256 minProfit) = abi.decode(params, (bytes, uint256));
-        if ((path.length != 42 && path.length != 63) || minProfit == 0) revert BadPath();
+        if ((path.length != 44 && path.length != 66) || minProfit == 0) revert BadPath();
 
         uint256 startBalance = IGuardedToken(asset).balanceOf(address(this));
         if (startBalance < amount) revert Unprofitable();
@@ -180,27 +196,33 @@ contract FlashLoanArbGuarded {
         {
             uint256 currentAmount = amount;
             address currentToken = asset;
-            address[] memory seen = new address[](path.length / 21);
-
-            for (uint256 i = 0; i < seen.length; ++i) {
-                uint256 offset = i * 21;
-                address pairAddress;
+            address[] memory seen = new address[](path.length / 22);            for (uint256 i = 0; i < seen.length; ++i) {
+                uint256 offset = i * 22;
+                uint8 kind;
+                address hopPool;
                 uint8 direction;
                 assembly {
                     let base := add(path, 32)
-                    pairAddress := shr(96, mload(add(base, offset)))
-                    direction := byte(0, mload(add(base, add(offset, 20))))
+                    kind := byte(0, mload(add(base, offset)))
+                    hopPool := shr(96, mload(add(base, add(offset, 1))))
+                    direction := byte(0, mload(add(base, add(offset, 21))))
                 }
 
-                if (pairAddress == address(0) || direction > 1) revert BadPath();
-                if (!approvedPair[pairAddress]) revert UnapprovedPair();
+                if (hopPool == address(0) || direction > 1 || kind > 1) revert BadPath();
+                if (kind == 0 ? !approvedPair[hopPool] : !approvedV3Pool[hopPool])
+                    revert UnapprovedPair();
                 for (uint256 j = 0; j < i; ++j) {
-                    if (seen[j] == pairAddress) revert BadPath();
+                    if (seen[j] == hopPool) revert BadPath();
                 }
-                seen[i] = pairAddress;
+                seen[i] = hopPool;
 
-                (currentToken, currentAmount) =
-                    _executeV2Hop(pairAddress, direction == 1, currentToken, currentAmount);
+                if (kind == 0) {
+                    (currentToken, currentAmount) =
+                        _executeV2Hop(hopPool, direction == 1, currentToken, currentAmount);
+                } else {
+                    (currentToken, currentAmount) =
+                        _executeV3Hop(hopPool, direction == 1, currentToken, currentAmount);
+                }
             }
             if (currentToken != asset) revert BadPath();
         }
@@ -250,6 +272,73 @@ contract FlashLoanArbGuarded {
         uint256 feeAmount = amount * 997;
         output = (feeAmount * rOut) / (rIn * 1000 + feeAmount);
         if (output == 0 || output >= rOut) revert Unprofitable();
+    }
+
+
+    function _executeV3Hop(
+        address poolAddress,
+        bool zeroForOne,
+        address currentToken,
+        uint256 inputAmount
+    ) private returns (address outputToken, uint256 received) {
+        IGuardedV3Pool v3 = IGuardedV3Pool(poolAddress);
+        address token0 = v3.token0();
+        address token1 = v3.token1();
+        if (zeroForOne ? currentToken != token0 : currentToken != token1)
+            revert BadPath();
+        outputToken = zeroForOne ? token1 : token0;
+        if (token0 == token1 || outputToken == address(0)) revert BadPath();
+
+        uint24 fee = v3.fee();
+        if (!_spacingMatchesFee(fee, v3.tickSpacing())) revert BadPath();
+
+        uint256 beforeOut = IGuardedToken(outputToken).balanceOf(address(this));
+        uint160 limit = zeroForOne
+            ? 4295128739 + 1
+            : 1461446703485210103287273052203988822378723970342 - 1;
+
+        v3PoolInFlight = poolAddress;
+        v3.swap(
+            address(this),
+            zeroForOne,
+            int256(inputAmount),
+            limit,
+            abi.encode(currentToken, outputToken)
+        );
+        v3PoolInFlight = address(0);
+
+        uint256 afterOut = IGuardedToken(outputToken).balanceOf(address(this));
+        if (afterOut <= beforeOut) revert Unprofitable();
+        received = afterOut - beforeOut;
+    }
+
+    function uniswapV3SwapCallback(
+        int256 amount0Delta,
+        int256 amount1Delta,
+        bytes calldata data
+    ) external {
+        address expected = v3PoolInFlight;
+        if (expected == address(0) || msg.sender != expected) revert NotPool();
+        (address tokenIn, address tokenOut) = abi.decode(data, (address, address));
+        if (amount0Delta > 0) {
+            _safeTransfer(tokenIn, msg.sender, uint256(amount0Delta));
+        } else if (amount1Delta > 0) {
+            _safeTransfer(tokenOut, msg.sender, uint256(amount1Delta));
+        } else {
+            revert BadPath();
+        }
+    }
+
+    function _spacingMatchesFee(uint24 fee, int24 spacing) private pure returns (bool) {
+        if (fee == 500) return spacing == 10;
+        if (fee == 3000) return spacing == 60;
+        if (fee == 10000) return spacing == 200;
+        return false;
+    }
+
+    function setApprovedV3Pool(address poolAddress, bool approved) external onlyOwner {
+        if (poolAddress == address(0)) revert BadPath();
+        approvedV3Pool[poolAddress] = approved;
     }
 
     function sweep(address token, uint256 amount) external onlyOwner {
