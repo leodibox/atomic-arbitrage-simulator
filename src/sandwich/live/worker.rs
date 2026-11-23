@@ -10,16 +10,16 @@ use super::unwind::Position;
 use super::unwind::Positions;
 use crate::arbitrage::state::PoolState;
 use crate::common::constants::WETH;
-use alloy::eips::{BlockNumberOrTag, Encodable2718};
 use alloy::consensus::Transaction as ConsensusTx;
-use alloy::network::{Ethereum, TransactionResponse};
-use alloy::primitives::{keccak256, Address, B256, Bytes, U256};
-use hex;
-use alloy::providers::Provider;
 use alloy::consensus::TxEnvelope;
+use alloy::eips::{BlockNumberOrTag, Encodable2718};
+use alloy::network::{Ethereum, TransactionResponse};
+use alloy::primitives::{keccak256, Address, Bytes, B256, U256};
+use alloy::providers::Provider;
 use alloy::rpc::types::Transaction;
 use alloy::signers::local::PrivateKeySigner;
 use anyhow::Result;
+use hex;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Semaphore};
 use tracing::{info, warn};
@@ -38,7 +38,11 @@ struct Ctx<P: Provider<Ethereum> + Clone + 'static> {
 
 fn expected_out(pool: &PoolState, buys: bool, amount: U256) -> Option<U256> {
     let (rin, rout) = if buys {
-        if pool.token0 == WETH { (pool.reserve0, pool.reserve1) } else { (pool.reserve1, pool.reserve0) }
+        if pool.token0 == WETH {
+            (pool.reserve0, pool.reserve1)
+        } else {
+            (pool.reserve1, pool.reserve0)
+        }
     } else if pool.token0 == WETH {
         (pool.reserve1, pool.reserve0)
     } else {
@@ -53,7 +57,10 @@ fn expected_out(pool: &PoolState, buys: bool, amount: U256) -> Option<U256> {
     Some(num / den)
 }
 
-async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: Transaction<TxEnvelope>) {
+async fn handle<P: Provider<Ethereum> + Clone + 'static>(
+    ctx: Arc<Ctx<P>>,
+    tx: Transaction<TxEnvelope>,
+) {
     let cfg = &ctx.cfg;
     let Some(to) = tx.to() else { return };
     if !cfg.routers.contains(&to) || tx.input().len() < 4 {
@@ -64,8 +71,15 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
     let Some(victim) = decode(tx.input(), tx.value(), |a, b| uni.pair_for(a, b), WETH) else {
         return;
     };
+    static DECODED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let decoded = DECODED.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+    if decoded == 1 || decoded % 10 == 0 {
+        info!(decoded, "pending tx decoded");
+    }
 
-    let Some(other) = other_side(&ctx, &victim).await else { return };
+    let Some(other) = other_side(&ctx, &victim).await else {
+        return;
+    };
     let (token_in, token_out) = if victim.victim_buys {
         (WETH, other)
     } else {
@@ -75,7 +89,11 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
     if !victim.victim_buys {
         return;
     }
-    let victim_size = if victim.exact_out { victim.limit } else { victim.amount_in };
+    let victim_size = if victim.exact_out {
+        victim.limit
+    } else {
+        victim.amount_in
+    };
     if victim_size < cfg.min_victim_weth {
         return;
     }
@@ -88,13 +106,20 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
         .flatten()
         .and_then(|b| b.header.base_fee_per_gas)
         .map(U256::from)
-        .unwrap_or_default();    let head = ctx.universe.head();
-    let Some(pool) = ctx.universe.fresh_pool(&victim.pair, cfg.max_reserve_age).await else {
+        .unwrap_or_default();
+    let head = ctx.universe.head();
+    let Some(pool) = ctx
+        .universe
+        .fresh_pool(&victim.pair, cfg.max_reserve_age)
+        .await
+    else {
         return;
     };
 
     if !victim.exact_out {
-        let Some(out) = expected_out(&pool, victim.victim_buys, victim.amount_in) else { return };
+        let Some(out) = expected_out(&pool, victim.victim_buys, victim.amount_in) else {
+            return;
+        };
         if slippage_bps(out, victim.limit) < cfg.min_slippage_bps {
             return;
         }
@@ -107,10 +132,17 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
     }
 
     let float = cfg.max_float_weth;
-    let Some(p) = plan(&pool, &victim, float, MAX_SHARE_BPS) else { return };
+    let Some(p) = plan(&pool, &victim, float, MAX_SHARE_BPS) else {
+        return;
+    };
 
     let front_dir = victim.token0_is_main;
-    let conf = Confirm { executor: cfg.executor, owner: ctx.signer.address(), weth_float: float, token_float: U256::ZERO };
+    let conf = Confirm {
+        executor: cfg.executor,
+        owner: ctx.signer.address(),
+        weth_float: float,
+        token_float: U256::ZERO,
+    };
     let Some(sim_profit) = confirm(
         ctx.provider.clone(),
         head,
@@ -174,7 +206,6 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
     let uuid = new_uuid();
     let _victim_hash = format!("0x{}", hex::encode(tx.tx_hash().as_slice()));
 
-
     let mut front = Bytes::new();
     let mut back = Bytes::new();
     let mut target = head + 1;
@@ -193,17 +224,45 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
             min_profit,
             &[(!front_dir, victim.pair, token_out, p.back_amount)],
         );
-        let Ok(front_raw) = sign_execute(&ctx.signer, cfg.executor, front_cd, cfg.gas_units / 2, max_fee, tip, n0) else {
+        let Ok(front_raw) = sign_execute(
+            &ctx.signer,
+            cfg.executor,
+            front_cd,
+            cfg.gas_units / 2,
+            max_fee,
+            tip,
+            n0,
+        ) else {
             warn!("front signing failed");
             break;
         };
-        let Ok(back_raw) = sign_execute(&ctx.signer, cfg.executor, back_cd, cfg.gas_units / 2, max_fee, tip, n1) else {
+        let Ok(back_raw) = sign_execute(
+            &ctx.signer,
+            cfg.executor,
+            back_cd,
+            cfg.gas_units / 2,
+            max_fee,
+            tip,
+            n1,
+        ) else {
             warn!("back signing failed");
             break;
         };
         front = front_raw;
         back = back_raw;
-        if ctx.provider.get_balance(ctx.signer.address()).await.map(|b| b < U256::from(cfg.min_gas_wei)).unwrap_or(false) { warn!(floor = cfg.min_gas_wei, "gas floor hit; skipping this block"); break; }
+        if ctx
+            .provider
+            .get_balance(ctx.signer.address())
+            .await
+            .map(|b| b < U256::from(cfg.min_gas_wei))
+            .unwrap_or(false)
+        {
+            warn!(
+                floor = cfg.min_gas_wei,
+                "gas floor hit; skipping this block"
+            );
+            break;
+        }
         let outcomes = ctx
             .relays
             .send_bundle(&BundleRequest {
@@ -240,7 +299,11 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
             landed = true;
             break;
         }
-        warn!(?front_state, ?back_state, "target block passed without both legs landing");
+        warn!(
+            ?front_state,
+            ?back_state,
+            "target block passed without both legs landing"
+        );
         if front_state.is_none() || back_state.is_none() {
             unknown = true;
         }
@@ -256,11 +319,11 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(ctx: Arc<Ctx<P>>, tx: T
         }
         if arm {
             ctx.positions.lock().await.push(Position {
-            token: token_out,
-            pair: victim.pair,
-            opened_block: head,
-            token0_is_main: victim.token0_is_main,
-            amount: p.back_amount,
+                token: token_out,
+                pair: victim.pair,
+                opened_block: head,
+                token0_is_main: victim.token0_is_main,
+                amount: p.back_amount,
             });
         }
         info!(pair = %victim.pair, "window expired, unwind armed");
@@ -284,10 +347,21 @@ pub async fn receipt_success<P: Provider<Ethereum>>(provider: &P, hash: B256) ->
     }
 }
 
-async fn other_side<P: Provider<Ethereum> + Clone + 'static>(ctx: &Arc<Ctx<P>>, v: &super::router::Victim) -> Option<Address> {
+async fn other_side<P: Provider<Ethereum> + Clone + 'static>(
+    ctx: &Arc<Ctx<P>>,
+    v: &super::router::Victim,
+) -> Option<Address> {
     let pool = ctx.universe.fresh_pool(&v.pair, u64::MAX).await?;
-    let other = if pool.token0 == WETH { pool.token1 } else { pool.token0 };
-    if other == WETH { None } else { Some(other) }
+    let other = if pool.token0 == WETH {
+        pool.token1
+    } else {
+        pool.token0
+    };
+    if other == WETH {
+        None
+    } else {
+        Some(other)
+    }
 }
 
 pub async fn run<P: Provider<Ethereum> + Clone + 'static>(
@@ -300,10 +374,20 @@ pub async fn run<P: Provider<Ethereum> + Clone + 'static>(
     signer: PrivateKeySigner,
     mut rx: mpsc::Receiver<Transaction<TxEnvelope>>,
 ) -> Result<()> {
-    let ctx = Arc::new(Ctx { cfg: cfg.clone(), universe, relays, nonces, positions, signer, provider });
+    let ctx = Arc::new(Ctx {
+        cfg: cfg.clone(),
+        universe,
+        relays,
+        nonces,
+        positions,
+        signer,
+        provider,
+    });
     let gate = Arc::new(Semaphore::new(cfg.max_inflight));
     while let Some(tx) = rx.recv().await {
-        let Ok(permit) = gate.clone().acquire_owned().await else { return Ok(()) };
+        let Ok(permit) = gate.clone().acquire_owned().await else {
+            return Ok(());
+        };
         let ctx = ctx.clone();
         tokio::spawn(async move {
             let _p = permit;
