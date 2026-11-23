@@ -60,6 +60,13 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    info!(routers = cfg.routers.len(), relays = cfg.relays.len(), "sandwich worker up");
-    worker::run(cfg, provider, universe, relays, nonces, positions, signer, rx_out).await
+    info!(
+        routers = cfg.routers.len(),
+        relays = cfg.relays.len(),
+        "sandwich worker up"
+    );
+    worker::run(
+        cfg, provider, universe, relays, nonces, positions, signer, rx_out,
+    )
+    .await
 }

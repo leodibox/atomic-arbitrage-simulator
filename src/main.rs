@@ -2,6 +2,8 @@ use alloy::primitives::Address;
 use alloy::providers::{Provider, ProviderBuilder};
 use alloy::rpc::types::Filter;
 use alloy::transports::ws::WsConnect;
+use anyhow::Context;
+use futures::StreamExt;
 use sandooo::arbitrage::{
     find_cycles,
     net::{largest_eligible_weth_v2_gap_bps, NetScan},
@@ -20,8 +22,6 @@ use std::time::Duration;
 use tokio::sync::{broadcast, Mutex, Notify, RwLock};
 use tokio::task::JoinSet;
 use tracing::{info, warn};
-use anyhow::Context;
-use futures::StreamExt;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -37,20 +37,22 @@ async fn main() -> anyhow::Result<()> {
     // Only PUBLIC identity and bytecode checks: never read a private key here.
     // Missing/partial configuration cannot become trading authorization.
     match sandooo::arbitrage::guarded_wiring::GuardedPublicConfig::from_environment() {
-        Ok(Some(config)) => match sandooo::arbitrage::guarded_wiring::verify_guarded_read_only(
-            &provider, &config
-        ).await {
-            Ok(attestation) => info!(
-                executor = %attestation.executor, owner = %attestation.owner,
-                recipient = %attestation.recipient,
-                code_keccak = %attestation.code_keccak,
-                paused = attestation.paused, auto_payout = attestation.auto_payout,
-                can_sign = false, transaction_submission_enabled = false,
-                "Guarded on-chain identity verified (read-only, NOT live activation)"
-            ),
-            Err(error) => warn!(%error,
+        Ok(Some(config)) => {
+            match sandooo::arbitrage::guarded_wiring::verify_guarded_read_only(&provider, &config)
+                .await
+            {
+                Ok(attestation) => info!(
+                    executor = %attestation.executor, owner = %attestation.owner,
+                    recipient = %attestation.recipient,
+                    code_keccak = %attestation.code_keccak,
+                    paused = attestation.paused, auto_payout = attestation.auto_payout,
+                    can_sign = false, transaction_submission_enabled = false,
+                    "Guarded on-chain identity verified (read-only, NOT live activation)"
+                ),
+                Err(error) => warn!(%error,
                 "Guarded executor read-only attestation FAILED; no execution permitted"),
-        },
+            }
+        }
         Ok(None) => info!(
             transaction_submission_enabled = false,
             "Guarded executor deployment/owner not configured; scanner remains read-only"
@@ -78,9 +80,15 @@ async fn main() -> anyhow::Result<()> {
     set.spawn(stream_new_blocks(provider.clone(), tx.clone()));
     set.spawn(stream_pending_transactions(provider.clone(), tx.clone()));
     set.spawn(sandooo::sandwich::strategy::run_sandwich_strategy(
-        env, provider, pools, tx.subscribe(), head,
+        env,
+        provider,
+        pools,
+        tx.subscribe(),
+        head,
     ));
-    while let Some(r) = set.join_next().await { r??; }
+    while let Some(r) = set.join_next().await {
+        r??;
+    }
     Ok(())
 }
 
@@ -110,7 +118,10 @@ fn best_discovery_per_ordered_route(cycles: Vec<Cycle>, premium_bps: u64) -> Vec
     for candidate in cycles {
         let mut key = format!("{:?}", candidate.start);
         for hop in &candidate.hops {
-            key.push_str(&format!("|{:?}:{:?}:{:?}", hop.pair, hop.token_in, hop.token_out));
+            key.push_str(&format!(
+                "|{:?}:{:?}:{:?}",
+                hop.pair, hop.token_in, hop.token_out
+            ));
         }
         if let Some(&index) = positions.get(&key) {
             if pre_gas_margin(&candidate) > pre_gas_margin(&winners[index]) {
@@ -224,10 +235,16 @@ where
         .collect();
     let structural_routes = count_closed_routes(&initial, sim_max_hops);
     if structural_routes == 0 {
-        warn!(pools = initial.len(), max_hops = sim_max_hops,
-            "configured allowlist contains NO closed arbitrage routes");
+        warn!(
+            pools = initial.len(),
+            max_hops = sim_max_hops,
+            "configured allowlist contains NO closed arbitrage routes"
+        );
     } else {
-        info!(structural_routes, "configured allowlist contains structural routes (profit not proven)");
+        info!(
+            structural_routes,
+            "configured allowlist contains structural routes (profit not proven)"
+        );
     }
     let pair_addresses: Vec<_> = initial.pairs().copied().collect();
     let unique_tokens: Vec<_> = initial
@@ -316,11 +333,18 @@ where
                                 tip_wei: 2_000_000_000,
                                 slippage_bps: 10,
                                 min_weth,
-                                pairs: pairs.iter().map(|(pair, _, _)| *pair).chain(configured_pairs.iter().copied()).collect(),
+                                pairs: pairs
+                                    .iter()
+                                    .map(|(pair, _, _)| *pair)
+                                    .chain(configured_pairs.iter().copied())
+                                    .collect(),
                             });
                             (Ok(snapshot), true)
                         } else if expanded_allowlist == allowlist {
-                            (load_allowlisted_reserves(&provider, &allowlist, b).await, true)
+                            (
+                                load_allowlisted_reserves(&provider, &allowlist, b).await,
+                                true,
+                            )
                         } else {
                             refresh_with_configured_fallback(
                                 b,
@@ -332,7 +356,8 @@ where
                         };
                     match refreshed {
                         Ok(fresh) => {
-                            if let Some(net_scan) = net_scan.as_ref().filter(|_| net_snapshot_available)
+                            if let Some(net_scan) =
+                                net_scan.as_ref().filter(|_| net_snapshot_available)
                             {
                                 let priced = net_scan.report(
                                     &provider,
@@ -372,14 +397,24 @@ where
         let triggered_by_sync = sync_event_pending;
         sync_event_pending = false;
 
-        let (pools, fresh_count, stale_count, cycles, near_misses, last_block, amounts_tried,
-            v2_compatible_gross_candidates) = {
+        let (
+            pools,
+            fresh_count,
+            stale_count,
+            cycles,
+            near_misses,
+            last_block,
+            amounts_tried,
+            v2_compatible_gross_candidates,
+        ) = {
             let guard = cache.read().await;
             // Count fresh vs stale pools
-            let fresh_count = guard.values()
+            let fresh_count = guard
+                .values()
                 .filter(|p| block.saturating_sub(p.block) <= stale_blocks)
                 .count()
-                + guard.v3_values()
+                + guard
+                    .v3_values()
                     .filter(|p| block.saturating_sub(p.block) <= stale_blocks)
                     .count();
             let stale_count = guard.len() - fresh_count;
@@ -441,7 +476,8 @@ where
                                 if f == 1 {
                                     unit / alloy::primitives::U256::from(10u64)
                                 } else {
-                                    alloy::primitives::U256::from(f) * unit / alloy::primitives::U256::from(10u64)
+                                    alloy::primitives::U256::from(f) * unit
+                                        / alloy::primitives::U256::from(10u64)
                                 }
                             } else {
                                 alloy::primitives::U256::from(f) * unit
@@ -452,7 +488,9 @@ where
                         }
                         // Reserve-proportional: 0.01%, 0.1%, 1% of smallest reserve
                         for pool in guard.values() {
-                            for (token, reserve) in [(pool.token0, pool.reserve0), (pool.token1, pool.reserve1)] {
+                            for (token, reserve) in
+                                [(pool.token0, pool.reserve0), (pool.token1, pool.reserve1)]
+                            {
                                 if starts.contains(&token) && !reserve.is_zero() {
                                     for pct_num in [1u64, 10, 100] {
                                         let amt = reserve * alloy::primitives::U256::from(pct_num)
@@ -487,9 +525,7 @@ where
                     / alloy::primitives::U256::from(10_000u64);
                 let mut kept = Vec::new();
                 for c in found {
-                    if c.gross_profit > premium
-                        && c.gross_profit - premium >= min_net
-                    {
+                    if c.gross_profit > premium && c.gross_profit - premium >= min_net {
                         kept.push(c);
                     } else if c.gross_profit > alloy::primitives::U256::ZERO {
                         near_miss_list.push((c.gross_profit, c.hops.len()));
@@ -504,17 +540,30 @@ where
 
             // Structural ABI compatibility is NOT equivalent to executable
             // profitability; gas/eth_call and wallet controls remain unverified.
-            let v2_compatible_gross_candidates = deduped.iter()
-                .filter(|candidate| candidate.hops.iter()
-                    .all(|hop| guard.get(&hop.pair).is_some_and(supports_legacy_v2_pool)))
+            let v2_compatible_gross_candidates = deduped
+                .iter()
+                .filter(|candidate| {
+                    candidate
+                        .hops
+                        .iter()
+                        .all(|hop| guard.get(&hop.pair).is_some_and(supports_legacy_v2_pool))
+                })
                 .count();
 
             // Sort near-misses, keep top N
             near_miss_list.sort_by(|a, b| b.0.cmp(&a.0));
             near_miss_list.truncate(near_miss_count);
 
-            (guard.len(), fresh_count, stale_count, deduped, near_miss_list, guard.last_block(),
-                amounts_tried, v2_compatible_gross_candidates)
+            (
+                guard.len(),
+                fresh_count,
+                stale_count,
+                deduped,
+                near_miss_list,
+                guard.last_block(),
+                amounts_tried,
+                v2_compatible_gross_candidates,
+            )
         };
 
         info!(
@@ -542,9 +591,7 @@ where
         let gap_bps = if triggered_by_sync {
             let guard = cache.read().await;
             net_scan.as_ref().and_then(|scan| {
-                largest_eligible_weth_v2_gap_bps(
-                    &guard, &scan.pairs, scan.min_weth,
-                )
+                largest_eligible_weth_v2_gap_bps(&guard, &scan.pairs, scan.min_weth)
             })
         } else {
             None
@@ -575,26 +622,35 @@ where
                 match fresh_head {
                     Ok(head) if head == block => {
                         let check = async {
-                            let fresh = load_allowlisted_reserves(
-                                &provider, &expanded_allowlist, block,
-                            ).await?;
-                            net_scan.report(
-                                &provider, &fresh, block, sim_min_profit, sim_max_hops,
-                            ).await
+                            let fresh =
+                                load_allowlisted_reserves(&provider, &expanded_allowlist, block)
+                                    .await?;
+                            net_scan
+                                .report(&provider, &fresh, block, sim_min_profit, sim_max_hops)
+                                .await
                         };
-                        if !matches!(tokio::time::timeout(Duration::from_secs(5), check).await,
-                            Ok(Ok(())))
-                        {
-                            warn!(block, "event candidate net screen inconclusive; no authorization");
+                        if !matches!(
+                            tokio::time::timeout(Duration::from_secs(5), check).await,
+                            Ok(Ok(()))
+                        ) {
+                            warn!(
+                                block,
+                                "event candidate net screen inconclusive; no authorization"
+                            );
                         }
                     }
-                    Ok(head) => info!(block, head,
-                        "event candidate already superseded; skipping stale net estimate"),
+                    Ok(head) => info!(
+                        block,
+                        head, "event candidate already superseded; skipping stale net estimate"
+                    ),
                     Err(error) => warn!(block, %error,
                         "event candidate cannot confirm head; skipping net estimate"),
                 }
             } else {
-                info!(block, "event candidate pending canonical V2 net-scan configuration");
+                info!(
+                    block,
+                    "event candidate pending canonical V2 net-scan configuration"
+                );
             }
         }
 
@@ -604,7 +660,13 @@ where
                     if let Some(base_fee) = header.header.base_fee_per_gas {
                         let snapshot = cache.read().await.clone();
                         match sandooo::arbitrage::live::coordinator::attempt(
-                            &provider, live_signer, live_config, &snapshot, cycle, block, base_fee,
+                            &provider,
+                            live_signer,
+                            live_config,
+                            &snapshot,
+                            cycle,
+                            block,
+                            base_fee,
                         )
                         .await
                         {
@@ -623,8 +685,10 @@ where
             let margin_before_gas = cycle.gross_profit.saturating_sub(premium);
             let v2_contract_compatible = {
                 let guard = cache.read().await;
-                cycle.hops.iter().all(|hop| guard.get(&hop.pair)
-                    .is_some_and(supports_legacy_v2_pool))
+                cycle
+                    .hops
+                    .iter()
+                    .all(|hop| guard.get(&hop.pair).is_some_and(supports_legacy_v2_pool))
             };
             info!(
                 gross_profit_raw = %cycle.gross_profit,
@@ -653,10 +717,13 @@ where
         }
 
         // Debug: log per-pool reserves
-        if std::env::var("DEBUG").map(|v| v.eq_ignore_ascii_case("true")).unwrap_or(false) {
+        if std::env::var("DEBUG")
+            .map(|v| v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+        {
             for pool in cache.read().await.values() {
                 let age = block.saturating_sub(pool.block);
-                info!(
+                tracing::debug!(
                     pair = ?pool.pair,
                     fee_bps = pool.fee_bps,
                     reserve0 = %pool.reserve0,
@@ -861,26 +928,37 @@ mod scanner_tests {
         let b = address!("0000000000000000000000000000000000000002");
         let first = address!("0000000000000000000000000000000000000010");
         let second = address!("0000000000000000000000000000000000000020");
-        let make_cycle = |pairs: [alloy::primitives::Address; 2], amount: u64, gross: u64| {
-            Cycle {
-                start: a,
-                amount_in: U256::from(amount),
-                amount_out: U256::from(amount + gross),
-                gross_profit: U256::from(gross),
-                hops: vec![
-                    Hop {pair:pairs[0], token_in:a, token_out:b,
-                         amount_in:U256::from(amount),amount_out:U256::from(amount)},
-                    Hop {pair:pairs[1], token_in:b, token_out:a,
-                         amount_in:U256::from(amount),amount_out:U256::from(amount+gross)},
-                ],
-                freshest_block: 100,
-            }
+        let make_cycle = |pairs: [alloy::primitives::Address; 2], amount: u64, gross: u64| Cycle {
+            start: a,
+            amount_in: U256::from(amount),
+            amount_out: U256::from(amount + gross),
+            gross_profit: U256::from(gross),
+            hops: vec![
+                Hop {
+                    pair: pairs[0],
+                    token_in: a,
+                    token_out: b,
+                    amount_in: U256::from(amount),
+                    amount_out: U256::from(amount),
+                },
+                Hop {
+                    pair: pairs[1],
+                    token_in: b,
+                    token_out: a,
+                    amount_in: U256::from(amount),
+                    amount_out: U256::from(amount + gross),
+                },
+            ],
+            freshest_block: 100,
         };
-        let selected = best_discovery_per_ordered_route(vec![
-            make_cycle([first, second], 100, 5),
-            make_cycle([second, first], 100, 3),
-            make_cycle([first, second], 200, 25),
-        ], 5);
+        let selected = best_discovery_per_ordered_route(
+            vec![
+                make_cycle([first, second], 100, 5),
+                make_cycle([second, first], 100, 3),
+                make_cycle([first, second], 200, 25),
+            ],
+            5,
+        );
         assert_eq!(selected.len(), 2, "reverse route must not disappear");
         assert_eq!(selected[0].gross_profit, U256::from(25));
         assert_eq!(selected[0].amount_in, U256::from(200));
@@ -899,18 +977,26 @@ mod scanner_tests {
             amount_out: U256::from(amount + gross),
             gross_profit: U256::from(gross),
             hops: vec![
-                Hop {pair:p1, token_in:a, token_out:b, amount_in:U256::from(amount),
-                    amount_out:U256::from(amount)},
-                Hop {pair:p2, token_in:b, token_out:a, amount_in:U256::from(amount),
-                    amount_out:U256::from(amount + gross)},
+                Hop {
+                    pair: p1,
+                    token_in: a,
+                    token_out: b,
+                    amount_in: U256::from(amount),
+                    amount_out: U256::from(amount),
+                },
+                Hop {
+                    pair: p2,
+                    token_in: b,
+                    token_out: a,
+                    amount_in: U256::from(amount),
+                    amount_out: U256::from(amount + gross),
+                },
             ],
             freshest_block: 100,
         };
         // 5bps: smaller probe margin = 20-5 = 15;
         // larger probe margin = 31-25 = 6, despite greater gross profit.
-        let winners = best_discovery_per_ordered_route(
-            vec![make(50_000, 31), make(10_000, 20)], 5
-        );
+        let winners = best_discovery_per_ordered_route(vec![make(50_000, 31), make(10_000, 20)], 5);
         assert_eq!(winners.len(), 1);
         assert_eq!(winners[0].amount_in, U256::from(10_000u64));
     }

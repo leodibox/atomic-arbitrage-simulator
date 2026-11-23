@@ -6,7 +6,9 @@ pub type TokensMap = HashMap<Address, (String, u8)>;
 
 pub fn load_cache() -> Result<TokensMap> {
     let path = Path::new("cache/tokens.csv");
-    if !path.exists() { return Ok(TokensMap::new()); }
+    if !path.exists() {
+        return Ok(TokensMap::new());
+    }
     let mut map = TokensMap::new();
     for rec in csv::Reader::from_path(path)?.records() {
         let r = rec?;

@@ -78,15 +78,35 @@ pub fn prepare_v2_flash_loan(
     let cost = cost.ok_or_else(|| anyhow::anyhow!("gas cost quote missing; fail closed"))?;
     ensure!(limits.current_block > 0, "no current block");
     ensure!((2..=3).contains(&limits.max_hops), "unsupported hop limit");
-    ensure!(cycle.hops.len() >= 2 && cycle.hops.len() <= limits.max_hops, "invalid route length");
+    ensure!(
+        cycle.hops.len() >= 2 && cycle.hops.len() <= limits.max_hops,
+        "invalid route length"
+    );
     ensure!(cycle.start != Address::ZERO, "zero loan asset");
-    ensure!(!cycle.amount_in.is_zero() && cycle.amount_in <= limits.max_flash_loan, "loan amount exceeds cap");
-    ensure!(!limits.min_profit_after_gas_in_asset.is_zero(), "minimum net profit must be positive");
-    ensure!((1..=1_000).contains(&limits.premium_bps), "invalid flash-loan premium");
-    ensure!(cost.quoted_at_block == limits.current_block, "gas quote is not for the current block");
-    ensure!(!cost.gas_cost_in_asset.is_zero(), "zero/unknown gas conversion is forbidden");
-    ensure!(!cost.gas_spend_wei.is_zero() && cost.gas_spend_wei <= limits.max_gas_spend_wei,
-        "gas spend exceeds permitted ETH budget");
+    ensure!(
+        !cycle.amount_in.is_zero() && cycle.amount_in <= limits.max_flash_loan,
+        "loan amount exceeds cap"
+    );
+    ensure!(
+        !limits.min_profit_after_gas_in_asset.is_zero(),
+        "minimum net profit must be positive"
+    );
+    ensure!(
+        (1..=1_000).contains(&limits.premium_bps),
+        "invalid flash-loan premium"
+    );
+    ensure!(
+        cost.quoted_at_block == limits.current_block,
+        "gas quote is not for the current block"
+    );
+    ensure!(
+        !cost.gas_cost_in_asset.is_zero(),
+        "zero/unknown gas conversion is forbidden"
+    );
+    ensure!(
+        !cost.gas_spend_wei.is_zero() && cost.gas_spend_wei <= limits.max_gas_spend_wei,
+        "gas spend exceeds permitted ETH budget"
+    );
 
     let mut path = Vec::with_capacity(21 * cycle.hops.len());
     let mut seen_pairs = HashSet::new();
@@ -98,12 +118,20 @@ pub fn prepare_v2_flash_loan(
         let Some(pool) = cache.get(&hop.pair) else {
             bail!("unknown or V3 pool in a V2-only executable route");
         };
-        ensure!(supports_legacy_v2_pool(pool), "V2 executor requires 30 bps pairs and supported token transfers");
-        ensure!(pool.block > 0 && pool.block <= limits.current_block
-            && limits.current_block - pool.block <= limits.max_pool_age_blocks,
-            "pool state is stale or from the future");
-        ensure!(hop.token_in == current_token && hop.amount_in == current_amount,
-            "discontinuous route");
+        ensure!(
+            supports_legacy_v2_pool(pool),
+            "V2 executor requires 30 bps pairs and supported token transfers"
+        );
+        ensure!(
+            pool.block > 0
+                && pool.block <= limits.current_block
+                && limits.current_block - pool.block <= limits.max_pool_age_blocks,
+            "pool state is stale or from the future"
+        );
+        ensure!(
+            hop.token_in == current_token && hop.amount_in == current_amount,
+            "discontinuous route"
+        );
         let zero_for_one = if current_token == pool.token0 {
             true
         } else if current_token == pool.token1 {
@@ -111,18 +139,25 @@ pub fn prepare_v2_flash_loan(
         } else {
             bail!("route input does not match pair token0/token1");
         };
-        let (expected_token, expected_amount) = pool.quote(current_token, current_amount)
+        let (expected_token, expected_amount) = pool
+            .quote(current_token, current_amount)
             .ok_or_else(|| anyhow::anyhow!("pair quote unavailable"))?;
-        ensure!(hop.token_out == expected_token && hop.amount_out == expected_amount,
-            "route output does not match current pool quote");
+        ensure!(
+            hop.token_out == expected_token && hop.amount_out == expected_amount,
+            "route output does not match current pool quote"
+        );
         path.extend_from_slice(hop.pair.as_slice());
         path.push(u8::from(zero_for_one));
         current_token = expected_token;
         current_amount = expected_amount;
     }
-    ensure!(current_token == cycle.start, "route does not return to loan asset");
+    ensure!(
+        current_token == cycle.start,
+        "route does not return to loan asset"
+    );
     ensure!(current_amount == cycle.amount_out, "outdated final amount");
-    let profit = current_amount.checked_sub(cycle.amount_in)
+    let profit = current_amount
+        .checked_sub(cycle.amount_in)
         .ok_or_else(|| anyhow::anyhow!("route has no gross profit"))?;
     ensure!(profit == cycle.gross_profit, "inconsistent gross profit");
 
@@ -132,15 +167,18 @@ pub fn prepare_v2_flash_loan(
     // minProfit on the contract is paid in the start token. The wallet pays gas
     // in ETH, therefore insist on enough asset surplus to cover priced gas.
     let min_profit_onchain = cost.gas_cost_in_asset + limits.min_profit_after_gas_in_asset;
-    ensure!(profit > premium + min_profit_onchain,
-        "gross profit cannot cover Aave premium, gas estimate and net floor");
+    ensure!(
+        profit > premium + min_profit_onchain,
+        "gross profit cannot cover Aave premium, gas estimate and net floor"
+    );
 
     let calldata = executeArbitrageCall {
         asset: cycle.start,
         amount: cycle.amount_in,
         path: Bytes::from(path.clone()),
         minProfit: min_profit_onchain,
-    }.abi_encode();
+    }
+    .abi_encode();
 
     Ok(PreparedV2FlashLoan {
         asset: cycle.start,
@@ -178,20 +216,26 @@ mod tests {
         let mut cache = ReserveCache::default();
         cache.insert(PoolState {
             pair: address!("0000000000000000000000000000000000000010"),
-            token0: usdc, token1: weth,
+            token0: usdc,
+            token1: weth,
             reserve0: U256::from(1_000_000u64),
             reserve1: U256::from(3_000_000u64),
-            fee_bps: 30, block: 100,
+            fee_bps: 30,
+            block: 100,
         });
         cache.insert(PoolState {
             pair: address!("0000000000000000000000000000000000000020"),
-            token0: weth, token1: usdc,
+            token0: weth,
+            token1: usdc,
             reserve0: U256::from(1_000_000u64),
             reserve1: U256::from(900_000u64),
-            fee_bps: 30, block: 100,
+            fee_bps: 30,
+            block: 100,
         });
         let cycle = find_cycles(&cache, &[usdc], U256::from(1_000u64), 3, U256::ZERO)
-            .into_iter().find(|c| c.gross_profit > U256::from(100u64)).unwrap();
+            .into_iter()
+            .find(|c| c.gross_profit > U256::from(100u64))
+            .unwrap();
         let limits = ExecutionLimits {
             current_block: 100,
             max_pool_age_blocks: 1,

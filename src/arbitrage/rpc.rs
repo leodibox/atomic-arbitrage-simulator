@@ -148,7 +148,11 @@ where
             let liquidity = U256::from(liq);
             let tick: i128 = i128::try_from(slot0.tick).unwrap_or(0);
             // Use on-chain fee if available, else config
-            let actual_fee_bps = if fee > alloy::primitives::Uint::<24, 1>::ZERO { fee.to::<u64>() / 100 } else { fee_bps };
+            let actual_fee_bps = if fee > alloy::primitives::Uint::<24, 1>::ZERO {
+                fee.to::<u64>() / 100
+            } else {
+                fee_bps
+            };
             cache.insert_v3(V3PoolState {
                 pair,
                 token0,
@@ -172,26 +176,50 @@ where
     P: Provider<Ethereum> + Clone,
 {
     for pool in cache.values() {
-        anyhow::ensure!(pool.fee_bps < 10_000, "invalid V2 fee on pair {}", pool.pair);
+        anyhow::ensure!(
+            pool.fee_bps < 10_000,
+            "invalid V2 fee on pair {}",
+            pool.pair
+        );
         let contract = V2Pair::new(pool.pair, provider.clone());
-        let actual0 = contract.token0().call().await
+        let actual0 = contract
+            .token0()
+            .call()
+            .await
             .with_context(|| format!("token0() failed for V2 pair {}", pool.pair))?;
-        let actual1 = contract.token1().call().await
+        let actual1 = contract
+            .token1()
+            .call()
+            .await
             .with_context(|| format!("token1() failed for V2 pair {}", pool.pair))?;
-        anyhow::ensure!(actual0 == pool.token0 && actual1 == pool.token1
-            && actual0 != actual1,
-            "POOL_ALLOWLIST token mismatch for V2 pair {}", pool.pair);
+        anyhow::ensure!(
+            actual0 == pool.token0 && actual1 == pool.token1 && actual0 != actual1,
+            "POOL_ALLOWLIST token mismatch for V2 pair {}",
+            pool.pair
+        );
     }
     for pool in cache.v3_values() {
-        anyhow::ensure!(pool.fee_bps < 10_000, "invalid V3 fee on pair {}", pool.pair);
+        anyhow::ensure!(
+            pool.fee_bps < 10_000,
+            "invalid V3 fee on pair {}",
+            pool.pair
+        );
         let contract = V3Pool::new(pool.pair, provider.clone());
-        let actual0 = contract.token0().call().await
+        let actual0 = contract
+            .token0()
+            .call()
+            .await
             .with_context(|| format!("token0() failed for V3 pool {}", pool.pair))?;
-        let actual1 = contract.token1().call().await
+        let actual1 = contract
+            .token1()
+            .call()
+            .await
             .with_context(|| format!("token1() failed for V3 pool {}", pool.pair))?;
-        anyhow::ensure!(actual0 == pool.token0 && actual1 == pool.token1
-            && actual0 != actual1,
-            "POOL_ALLOWLIST token mismatch for V3 pool {}", pool.pair);
+        anyhow::ensure!(
+            actual0 == pool.token0 && actual1 == pool.token1 && actual0 != actual1,
+            "POOL_ALLOWLIST token mismatch for V3 pool {}",
+            pool.pair
+        );
     }
     Ok(())
 }

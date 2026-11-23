@@ -32,13 +32,19 @@ pub async fn run_sandwich_strategy<P: Provider<Ethereum> + Clone + 'static>(
     loop {
         let Ok(event) = rx.recv().await else { continue };
         let Event::PendingTx(pending) = event else {
-            if let Event::Block(b) = event { *head.lock().await = b.number; }
+            if let Event::Block(b) = event {
+                *head.lock().await = b.number;
+            }
             continue;
         };
 
         let hash = pending.tx.tx_hash();
-        let Some(info) = get_pending_tx_info(&provider, hash, &pools).await? else { continue };
-        if info.swaps.is_empty() { continue; }
+        let Some(info) = get_pending_tx_info(&provider, hash, &pools).await? else {
+            continue;
+        };
+        if info.swaps.is_empty() {
+            continue;
+        }
 
         for swap in info.swaps {
             let block = *head.lock().await;
@@ -46,24 +52,36 @@ pub async fn run_sandwich_strategy<P: Provider<Ethereum> + Clone + 'static>(
 
             let mut probe = |amount: U256| -> Option<U256> {
                 tokio::task::block_in_place(|| {
-                    tokio::runtime::Handle::current().block_on(
-                        harness.triangle(block, U256::ZERO, &swap, &pending.tx, amount)
-                    )
+                    tokio::runtime::Handle::current().block_on(harness.triangle(
+                        block,
+                        U256::ZERO,
+                        &swap,
+                        &pending.tx,
+                        amount,
+                    ))
                 })
             };
 
-            if !is_appetizing(&mut probe, max_gas) { continue; }
+            if !is_appetizing(&mut probe, max_gas) {
+                continue;
+            }
 
             let cap = env.weth_float.min(U256::from(u128::MAX));
-            let Some((amount, profit)) = optimize_amount(probe, U256::ZERO, cap) else { continue };
+            let Some((amount, profit)) = optimize_amount(probe, U256::ZERO, cap) else {
+                continue;
+            };
             let revenue = profit.saturating_sub(max_gas);
-            if revenue < env.min_revenue { continue; }
+            if revenue < env.min_revenue {
+                continue;
+            }
 
             info!(
                 pair = %swap.target_pair, victim = %hash, front = %amount,
                 profit = %profit, revenue = %revenue, "opportunity"
             );
-            if !env.debug { warn!("submit path not wired — DEBUG=true"); }
+            if !env.debug {
+                warn!("submit path not wired — DEBUG=true");
+            }
         }
     }
 }

@@ -1,8 +1,8 @@
 use super::config::{Feed, SandwichConfig};
+use alloy::consensus::TxEnvelope;
 use alloy::network::Ethereum;
 use alloy::network::TransactionResponse;
 use alloy::providers::Provider;
-use alloy::consensus::TxEnvelope;
 use alloy::rpc::types::Transaction;
 use anyhow::Result;
 use futures::StreamExt;
@@ -20,7 +20,10 @@ struct Seen {
 
 impl Seen {
     fn new() -> Self {
-        Self { set: HashSet::new(), order: VecDeque::new() }
+        Self {
+            set: HashSet::new(),
+            order: VecDeque::new(),
+        }
     }
 
     fn insert(&mut self, hash: [u8; 32]) -> bool {
@@ -37,6 +40,8 @@ impl Seen {
     }
 }
 
+use alloy::consensus::Transaction as ConsensusTx;
+
 pub async fn run<P>(
     provider: P,
     cfg: Arc<SandwichConfig>,
@@ -49,15 +54,38 @@ where
         let params = (
             "alchemy_pendingTransactions",
             serde_json::json!({
-                "toAddress": cfg.routers.iter().map(|a| format!("{a:#x}")).collect::<Vec<_>>(),
                 "hashesOnly": false,
             }),
         );
-        match provider.subscribe::<_, Transaction<TxEnvelope>>(params).await {
+        match provider
+            .subscribe::<_, Transaction<TxEnvelope>>(params)
+            .await
+        {
             Ok(sub) => {
-                info!(routers = cfg.routers.len(), "pending feed: alchemy filtered subscription");
+                info!(
+                    routers = cfg.routers.len(),
+                    "pending feed: alchemy subscription, filtering locally"
+                );
                 let mut stream = sub.into_stream();
+                let mut arrived: u64 = 0;
+                let mut routed: u64 = 0;
                 while let Some(tx) = stream.next().await {
+                    arrived += 1;
+                    if arrived == 1 || arrived % 200 == 0 {
+                        info!(arrived, routed, "pending feed: transactions arrived");
+                    }
+                    let hit = tx
+                        .inner
+                        .to()
+                        .map(|to| cfg.routers.iter().any(|r| *r == to))
+                        .unwrap_or(false);
+                    if !hit {
+                        continue;
+                    }
+                    routed += 1;
+                    if routed == 1 || routed % 10 == 0 {
+                        info!(routed, "pending feed: router match");
+                    }
                     if out.send(tx).await.is_err() {
                         return Ok(());
                     }
@@ -69,7 +97,10 @@ where
     }
 
     if cfg.feed == Feed::FullPending {
-        match provider.subscribe::<_, Transaction<TxEnvelope>>(("newPendingTransactions", (false,))).await {
+        match provider
+            .subscribe::<_, Transaction<TxEnvelope>>(("newPendingTransactions", (false,)))
+            .await
+        {
             Ok(sub) => {
                 info!("pending feed: full-body subscription");
                 let mut stream = sub.into_stream();
@@ -84,7 +115,10 @@ where
         }
     }
 
-    info!(poll_ms = cfg.poll_ms, "pending feed: txpool_content polling");
+    info!(
+        poll_ms = cfg.poll_ms,
+        "pending feed: txpool_content polling"
+    );
     let mut seen = Seen::new();
     loop {
         let raw: serde_json::Value = match provider.raw_request("txpool_content".into(), ()).await {
@@ -97,11 +131,18 @@ where
         };
 
         for bucket in ["pending", "queued"] {
-            let Some(map) = raw.get(bucket).and_then(|v| v.as_object()) else { continue };
+            let Some(map) = raw.get(bucket).and_then(|v| v.as_object()) else {
+                continue;
+            };
             for by_nonce in map.values() {
-                let Some(by_nonce) = by_nonce.as_object() else { continue };
+                let Some(by_nonce) = by_nonce.as_object() else {
+                    continue;
+                };
                 for value in by_nonce.values() {
-                    let Ok(tx) = serde_json::from_value::<Transaction<TxEnvelope>>(value.clone()) else { continue };
+                    let Ok(tx) = serde_json::from_value::<Transaction<TxEnvelope>>(value.clone())
+                    else {
+                        continue;
+                    };
                     if !seen.insert(tx.tx_hash().0) {
                         continue;
                     }

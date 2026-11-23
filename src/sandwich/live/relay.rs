@@ -63,7 +63,11 @@ impl RelayClient {
             let sig = self.identity.sign_hash(&keccak256(body)).await?;
             out.push((
                 "X-Flashbots-Signature".to_string(),
-                format!("{:#x}:0x{}", self.identity.address(), hex::encode(sig.as_bytes())),
+                format!(
+                    "{:#x}:0x{}",
+                    self.identity.address(),
+                    hex::encode(sig.as_bytes())
+                ),
             ));
         }
         if let Some(key) = auth {
@@ -73,16 +77,23 @@ impl RelayClient {
     }
 
     async fn call(&self, relay: &RelayConfig, method: &str, params: Value) -> Result<Value> {
-        let body = json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params }).to_string();
+        let body =
+            json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params }).to_string();
         let mut req = self.http.post(&relay.url);
-        for (k, v) in self.headers(relay.kind, body.as_bytes(), relay.auth.as_deref()).await? {
+        for (k, v) in self
+            .headers(relay.kind, body.as_bytes(), relay.auth.as_deref())
+            .await?
+        {
             req = req.header(k, v);
         }
         let resp = req.body(body).send().await?;
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
         if !status.is_success() {
-            bail!("http {status}: {}", text.chars().take(200).collect::<String>());
+            bail!(
+                "http {status}: {}",
+                text.chars().take(200).collect::<String>()
+            );
         }
         let value: Value = serde_json::from_str(&text)?;
         if let Some(err) = value.get("error") {
@@ -92,7 +103,11 @@ impl RelayClient {
     }
 
     pub async fn send_bundle(&self, bundle: &BundleRequest) -> Vec<RelayOutcome> {
-        let txs: Vec<String> = bundle.txs.iter().map(|t| format!("0x{}", hex::encode(t))).collect();
+        let txs: Vec<String> = bundle
+            .txs
+            .iter()
+            .map(|t| format!("0x{}", hex::encode(t)))
+            .collect();
         let params = json!([{
             "txs": txs,
             "blockNumber": format!("{:#x}", bundle.block),
@@ -114,9 +129,17 @@ impl RelayClient {
                             .and_then(|r| r.get("bundleHash"))
                             .and_then(|h| h.as_str())
                             .unwrap_or("accepted");
-                        RelayOutcome { relay: relay.name, ok: true, detail: h.to_string() }
+                        RelayOutcome {
+                            relay: relay.name,
+                            ok: true,
+                            detail: h.to_string(),
+                        }
                     }
-                    Err(e) => RelayOutcome { relay: relay.name, ok: false, detail: e.to_string() },
+                    Err(e) => RelayOutcome {
+                        relay: relay.name,
+                        ok: false,
+                        detail: e.to_string(),
+                    },
                 }
             });
         }
@@ -132,8 +155,16 @@ impl RelayClient {
                 "replacementUuid": uuid,
             }]);
             out.push(match self.call(relay, "eth_sendBundle", params).await {
-                Ok(_) => RelayOutcome { relay: relay.name.clone(), ok: true, detail: "cancelled".into() },
-                Err(e) => RelayOutcome { relay: relay.name.clone(), ok: false, detail: e.to_string() },
+                Ok(_) => RelayOutcome {
+                    relay: relay.name.clone(),
+                    ok: true,
+                    detail: "cancelled".into(),
+                },
+                Err(e) => RelayOutcome {
+                    relay: relay.name.clone(),
+                    ok: false,
+                    detail: e.to_string(),
+                },
             });
         }
         out

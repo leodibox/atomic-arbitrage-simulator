@@ -29,8 +29,8 @@ impl PoolState {
         let fee_denominator = U256::from(10_000u64);
         let fee_multiplier = fee_denominator - U256::from(self.fee_bps);
         let amount_after_fee = amount * fee_multiplier;
-        let output_amount = (amount_after_fee * reserve_out)
-            / (reserve_in * fee_denominator + amount_after_fee);
+        let output_amount =
+            (amount_after_fee * reserve_out) / (reserve_in * fee_denominator + amount_after_fee);
         (output_amount > U256::ZERO).then_some((output, output_amount))
     }
 
@@ -61,8 +61,11 @@ pub struct V3PoolState {
 impl V3PoolState {
     /// Quote a swap using single-tick concentrated liquidity math.
     pub fn quote(&self, input: Address, amount: U256) -> Option<(Address, U256)> {
-        if amount.is_zero() || self.liquidity.is_zero() || self.sqrt_price_x96.is_zero()
-            || self.fee_bps >= 10_000 {
+        if amount.is_zero()
+            || self.liquidity.is_zero()
+            || self.sqrt_price_x96.is_zero()
+            || self.fee_bps >= 10_000
+        {
             return None;
         }
 
@@ -75,9 +78,13 @@ impl V3PoolState {
         } else {
             return None;
         };
-        let output_token = if zero_for_one { self.token1 } else { self.token0 };
+        let output_token = if zero_for_one {
+            self.token1
+        } else {
+            self.token0
+        };
 
-        // Fee: amount * (1 - fee) 
+        // Fee: amount * (1 - fee)
         let fee_denom = U256::from(1_000_000u64);
         let fee_mult = fee_denom - U256::from(self.fee_bps * 100); // fee_bps in bps -> ppm
         let amount_after_fee = amount * fee_mult / fee_denom;
@@ -87,9 +94,13 @@ impl V3PoolState {
             // token0 -> token1: Δy = L·(√P − √P′) / Q96
             let numerator = self.liquidity * self.sqrt_price_x96;
             let denom: U256 = self.liquidity + (amount_after_fee * self.sqrt_price_x96 / q96);
-            if denom.is_zero() { return None; }
+            if denom.is_zero() {
+                return None;
+            }
             let new_sqrt = numerator / denom;
-            if new_sqrt >= self.sqrt_price_x96 { return None; }
+            if new_sqrt >= self.sqrt_price_x96 {
+                return None;
+            }
             let amount_out = self.liquidity * (self.sqrt_price_x96 - new_sqrt) / q96;
             (amount_out > U256::ZERO).then_some((output_token, amount_out))
         } else {
@@ -100,7 +111,9 @@ impl V3PoolState {
             let new_sqrt = self.sqrt_price_x96 + amount_in_scaled;
             let num: U256 = self.liquidity * q96 * (new_sqrt - self.sqrt_price_x96);
             let den: U256 = new_sqrt * self.sqrt_price_x96;
-            if den.is_zero() { return None; }
+            if den.is_zero() {
+                return None;
+            }
             let amount_out = num / den;
             (amount_out > U256::ZERO).then_some((output_token, amount_out))
         }
@@ -169,14 +182,22 @@ impl ReserveCache {
         results
     }
 
-    pub fn len(&self) -> usize { self.pools.len() + self.v3_pools.len() }
-    pub fn last_block(&self) -> u64 { self.last_block }
+    pub fn len(&self) -> usize {
+        self.pools.len() + self.v3_pools.len()
+    }
+    pub fn last_block(&self) -> u64 {
+        self.last_block
+    }
 
     /// Decode a canonical V2 Sync event without making an RPC call.
     pub fn apply_sync_log(&mut self, pair: Address, data: &[u8], block: u64) -> bool {
-        if data.len() < 64 { return false; }
+        if data.len() < 64 {
+            return false;
+        }
         if let Some(pool) = self.pools.get_mut(&pair) {
-            if block == 0 || block < pool.block { return false; }
+            if block == 0 || block < pool.block {
+                return false;
+            }
             pool.apply_sync(
                 U256::from_be_slice(&data[..32]),
                 U256::from_be_slice(&data[32..64]),
@@ -209,10 +230,13 @@ mod tests {
         let c = address!("0000000000000000000000000000000000000003");
         let pool = V3PoolState {
             pair: address!("0000000000000000000000000000000000000010"),
-            token0: a, token1: b,
+            token0: a,
+            token1: b,
             sqrt_price_x96: U256::from(1u128) << 96,
             liquidity: U256::from(1_000_000u64),
-            tick: 0, fee_bps: 5, block: 100,
+            tick: 0,
+            fee_bps: 5,
+            block: 100,
         };
         assert!(pool.quote(c, U256::from(100u64)).is_none());
     }
@@ -225,15 +249,23 @@ mod tests {
         let b = address!("0000000000000000000000000000000000000002");
         let pool = V3PoolState {
             pair: address!("0000000000000000000000000000000000000010"),
-            token0: a, token1: b,
+            token0: a,
+            token1: b,
             sqrt_price_x96: U256::from(18_257u64) << 96,
             liquidity: U256::from(1_000_000_000_000_000u64),
-            tick: 0, fee_bps: 5, block: 100,
+            tick: 0,
+            fee_bps: 5,
+            block: 100,
         };
-        let (out_token, out) = pool.quote(b, U256::from(54_870_000_000_000_000u64)).unwrap();
+        let (out_token, out) = pool
+            .quote(b, U256::from(54_870_000_000_000_000u64))
+            .unwrap();
         assert_eq!(out_token, a);
-        assert!(out > U256::from(150_000_000u64) && out < U256::from(180_000_000u64),
-            "expected ~1.64e8, got {}", out);
+        assert!(
+            out > U256::from(150_000_000u64) && out < U256::from(180_000_000u64),
+            "expected ~1.64e8, got {}",
+            out
+        );
         // and the inverse direction must stay consistent
         let (_, back) = pool.quote(a, out).unwrap();
         assert!(back < U256::from(54_870_000_000_000_000u64));
@@ -246,9 +278,13 @@ mod tests {
         let pair = address!("0000000000000000000000000000000000000010");
         let mut cache = ReserveCache::default();
         cache.insert(PoolState {
-            pair, token0: a, token1: b,
-            reserve0: U256::from(100u64), reserve1: U256::from(200u64),
-            fee_bps: 30, block: 20,
+            pair,
+            token0: a,
+            token1: b,
+            reserve0: U256::from(100u64),
+            reserve1: U256::from(200u64),
+            fee_bps: 30,
+            block: 20,
         });
         let mut data = [0u8; 64];
         data[31] = 15;

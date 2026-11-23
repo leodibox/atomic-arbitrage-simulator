@@ -44,7 +44,10 @@ pub struct Attempt {
 
 impl Attempt {
     fn stop(stage: Stage, detail: impl Into<String>) -> Self {
-        Self { stage, detail: detail.into() }
+        Self {
+            stage,
+            detail: detail.into(),
+        }
     }
 }
 
@@ -69,14 +72,18 @@ fn required(name: &str) -> Result<String> {
 }
 
 fn address_var(name: &str) -> Result<Address> {
-    required(name)?.trim().parse().with_context(|| format!("{name} is not an address"))
+    required(name)?
+        .trim()
+        .parse()
+        .with_context(|| format!("{name} is not an address"))
 }
 
 fn u64_var(name: &str, default: u64) -> Result<u64> {
     match std::env::var(name) {
-        Ok(value) if !value.trim().is_empty() => {
-            value.trim().parse().with_context(|| format!("{name} must be u64"))
-        }
+        Ok(value) if !value.trim().is_empty() => value
+            .trim()
+            .parse()
+            .with_context(|| format!("{name} must be u64")),
         _ => Ok(default),
     }
 }
@@ -114,7 +121,10 @@ impl LiveConfig {
         };
         ensure!(config.gas_units > 0, "ARB_GAS_UNITS must be positive");
         ensure!(!config.tip_wei.is_zero(), "ARB_TIP_WEI must be positive");
-        ensure!(config.max_flash_loan > U256::ZERO, "ARB_MAX_FLASH_LOAN must be positive");
+        ensure!(
+            config.max_flash_loan > U256::ZERO,
+            "ARB_MAX_FLASH_LOAN must be positive"
+        );
         Ok(Some(config))
     }
 }
@@ -248,7 +258,13 @@ pub async fn attempt<P: Provider<Ethereum> + Clone>(
         onchain_pair_and_loan_caps_verified: true,
         route_profitable_after_all_costs: !net.is_zero(),
     };
-    let check = match quote::build_check(1, config.gas_units, max_fee, &gas_quote.aged(quoted_at.elapsed().as_secs()), evidence) {
+    let check = match quote::build_check(
+        1,
+        config.gas_units,
+        max_fee,
+        &gas_quote.aged(quoted_at.elapsed().as_secs()),
+        evidence,
+    ) {
         Ok(check) => check,
         Err(error) => return Ok(Attempt::stop(Stage::Gate, error.to_string())),
     };

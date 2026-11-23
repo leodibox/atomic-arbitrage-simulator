@@ -68,7 +68,9 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(
     }
 
     let uni = ctx.universe.clone();
+    let selector = tx.input().get(..4).map(hex::encode).unwrap_or_default();
     let Some(victim) = decode(tx.input(), tx.value(), |a, b| uni.pair_for(a, b), WETH) else {
+        info!(selector, "router tx not decoded");
         return;
     };
     static DECODED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -78,6 +80,7 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(
     }
 
     let Some(other) = other_side(&ctx, &victim).await else {
+        info!("victim has no counterpart pool");
         return;
     };
     let (token_in, token_out) = if victim.victim_buys {
@@ -87,6 +90,7 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(
     };
 
     if !victim.victim_buys {
+        info!("victim sells, skipped");
         return;
     }
     let victim_size = if victim.exact_out {
@@ -95,6 +99,7 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(
         victim.amount_in
     };
     if victim_size < cfg.min_victim_weth {
+        info!("victim under size floor");
         return;
     }
 
@@ -113,26 +118,31 @@ async fn handle<P: Provider<Ethereum> + Clone + 'static>(
         .fresh_pool(&victim.pair, cfg.max_reserve_age)
         .await
     else {
+        info!("pair not fresh");
         return;
     };
 
     if !victim.exact_out {
         let Some(out) = expected_out(&pool, victim.victim_buys, victim.amount_in) else {
+            info!("no expected_out");
             return;
         };
         if slippage_bps(out, victim.limit) < cfg.min_slippage_bps {
+            info!("slippage under floor");
             return;
         }
     } else if victim.limit.is_zero() {
         return;
     }
 
-    if cycle_open(&ctx.provider, cfg.executor).await != Some(false) {
+    if !cfg.dry_run && cycle_open(&ctx.provider, cfg.executor).await != Some(false) {
+        info!("cycle open on the executor");
         return;
     }
 
     let float = cfg.max_float_weth;
     let Some(p) = plan(&pool, &victim, float, MAX_SHARE_BPS) else {
+        info!("plan rejected");
         return;
     };
 

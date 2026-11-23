@@ -22,7 +22,9 @@ pub async fn load_all_pools<P: Provider<Ethereum>>(provider: &P) -> Result<Pools
     }
 
     let path = Path::new("cache/pools.csv");
-    if path.exists() { return read_cache(path); }
+    if path.exists() {
+        return read_cache(path);
+    }
 
     let head = provider.get_block_number().await?;
     let mut map = PoolsMap::new();
@@ -32,15 +34,22 @@ pub async fn load_all_pools<P: Provider<Ethereum>>(provider: &P) -> Result<Pools
         let end = (start + crate::common::constants::POOL_SCAN_BATCH).min(head);
         let filter = Filter::new()
             .address(crate::common::constants::FACTORY_V2)
-            .event_signature(B256::from_slice(&hex_lit(crate::common::constants::PAIR_CREATED_TOPIC)))
-            .from_block(start).to_block(end);
+            .event_signature(B256::from_slice(&hex_lit(
+                crate::common::constants::PAIR_CREATED_TOPIC,
+            )))
+            .from_block(start)
+            .to_block(end);
 
         for log in provider.get_logs(&filter).await? {
-            if log.topics().len() < 3 { continue; }
+            if log.topics().len() < 3 {
+                continue;
+            }
             let t0 = Address::from_slice(&log.topics()[1].as_slice()[12..]);
             let t1 = Address::from_slice(&log.topics()[2].as_slice()[12..]);
             let data = log.data().data.as_ref();
-            if data.len() < 32 { continue; }
+            if data.len() < 32 {
+                continue;
+            }
             let pair = Address::from_slice(&data[12..32]);
             map.insert(pair, (t0, t1));
         }
@@ -50,7 +59,9 @@ pub async fn load_all_pools<P: Provider<Ethereum>>(provider: &P) -> Result<Pools
     Ok(map)
 }
 
-fn hex_lit(s: &str) -> Vec<u8> { hex::decode(s.trim_start_matches("0x")).unwrap() }
+fn hex_lit(s: &str) -> Vec<u8> {
+    hex::decode(s.trim_start_matches("0x")).unwrap()
+}
 
 fn read_cache(path: &Path) -> Result<PoolsMap> {
     let mut map = PoolsMap::new();
@@ -64,7 +75,9 @@ fn read_cache(path: &Path) -> Result<PoolsMap> {
 fn write_cache(path: &Path, map: &PoolsMap) -> Result<()> {
     std::fs::create_dir_all("cache")?;
     let mut w = csv::Writer::from_path(path)?;
-    for (pair, (t0, t1)) in map { w.write_record([pair.to_string(), t0.to_string(), t1.to_string()])?; }
+    for (pair, (t0, t1)) in map {
+        w.write_record([pair.to_string(), t0.to_string(), t1.to_string()])?;
+    }
     w.flush()?;
     Ok(())
 }

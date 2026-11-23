@@ -29,8 +29,7 @@ sol! {
     }
 }
 
-pub const CHAINLINK_ETH_USD: Address =
-    address!("5f4eC3Df9cbd43714FE2740f5E3616155c5b8419");
+pub const CHAINLINK_ETH_USD: Address = address!("5f4eC3Df9cbd43714FE2740f5E3616155c5b8419");
 pub const FETCH_MAX_AGE_SECS: u64 = 30;
 pub const ROUND_MAX_AGE_SECS: u64 = 3600;
 
@@ -66,11 +65,18 @@ pub async fn read_eth_usd<P: Provider<Ethereum> + Clone>(
         "ETH/USD quote is Ethereum mainnet only"
     );
     ensure!(block > 0, "quote requires a pinned block");
-    ensure!(chain_timestamp > 0, "quote requires the pinned block timestamp");
+    ensure!(
+        chain_timestamp > 0,
+        "quote requires the pinned block timestamp"
+    );
     let aggregator = ChainlinkEthUsd::new(CHAINLINK_ETH_USD, provider.clone());
     let decimals = aggregator.decimals().block(block.into()).call().await?;
     ensure!(decimals == 8, "unexpected Chainlink ETH/USD decimals");
-    let round = aggregator.latestRoundData().block(block.into()).call().await?;
+    let round = aggregator
+        .latestRoundData()
+        .block(block.into())
+        .call()
+        .await?;
     let answer = round
         .answer
         .to_string()
@@ -163,8 +169,13 @@ mod tests {
     #[test]
     fn fresh_quote_with_complete_evidence_reaches_the_gate() {
         let check = build_check(
-            1, 100_000, U256::from(10_000_000_000u64), &quote(), evidence(),
-        ).unwrap();
+            1,
+            100_000,
+            U256::from(10_000_000_000u64),
+            &quote(),
+            evidence(),
+        )
+        .unwrap();
         assert_eq!(
             assess_before_reservation(&check).unwrap(),
             U256::from(330_000_000u64)
@@ -195,8 +206,13 @@ mod tests {
     #[test]
     fn missing_evidence_still_reaches_the_gate_and_fails_closed() {
         let check = build_check(
-            1, 100_000, U256::from(10_000_000_000u64), &quote(), Evidence::default(),
-        ).unwrap();
+            1,
+            100_000,
+            U256::from(10_000_000_000u64),
+            &quote(),
+            Evidence::default(),
+        )
+        .unwrap();
         assert!(assess_before_reservation(&check).is_err());
     }
 
@@ -204,9 +220,8 @@ mod tests {
     fn zero_price_is_rejected_by_the_gate_math() {
         let mut zero = quote();
         zero.eth_usd_e8 = U256::ZERO;
-        let check = build_check(
-            1, 100_000, U256::from(10_000_000_000u64), &zero, evidence(),
-        ).unwrap();
+        let check =
+            build_check(1, 100_000, U256::from(10_000_000_000u64), &zero, evidence()).unwrap();
         assert!(assess_before_reservation(&check).is_err());
     }
 }

@@ -106,7 +106,10 @@ pub async fn verify_permission<P: Provider<Ethereum> + Clone>(
     let auto_payout = contract.autoPayout().call().await?;
 
     ensure!(owner == request.expected_owner, "owner() mismatch");
-    ensure!(pool == request.expected_pool, "pool() is not canonical Aave");
+    ensure!(
+        pool == request.expected_pool,
+        "pool() is not canonical Aave"
+    );
     ensure!(
         recipient == request.expected_recipient,
         "profitRecipient() mismatch"

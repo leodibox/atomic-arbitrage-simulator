@@ -1,4 +1,5 @@
 use alloy::primitives::{Address, Bytes, U256};
+use tracing::info;
 
 const IN_TOKENS: [u8; 4] = [0x38, 0xed, 0x17, 0x39];
 const IN_TOKENS_FOT: [u8; 4] = [0x5c, 0x11, 0xd7, 0x95];
@@ -134,19 +135,26 @@ where
             word(body, desired)?,
         ),
     };
-    let path = path_at(body, pi)?;
+    let Some(path) = path_at(body, pi) else {
+        info!("skip: path not 2-token");
+        return None;
+    };
     let (a, b) = (path[0], path[1]);
     let (token_in, token_out) = if a == weth {
         (a, b)
     } else if b == weth {
         (b, a)
     } else {
+        info!("skip: no WETH side");
         return None;
     };
     if token_in == token_out {
         return None;
     }
-    let (pair, token0_is_main) = pair_for(token_in, token_out)?;
+    let Some((pair, token0_is_main)) = pair_for(token_in, token_out) else {
+        info!(%token_in, %token_out, "skip: pair not in universe");
+        return None;
+    };
     Some(Victim {
         pair,
         token0_is_main,
@@ -217,19 +225,26 @@ where
     if amount_in.is_zero() {
         return None;
     }
-    let path = path_at(p, 3)?;
+    let Some(path) = path_at(p, 3) else {
+        info!("skip: path not 2-token");
+        return None;
+    };
     let (a, b) = (path[0], path[1]);
     let (token_in, token_out) = if a == weth {
         (a, b)
     } else if b == weth {
         (b, a)
     } else {
+        info!("skip: no WETH side");
         return None;
     };
     if token_in == token_out {
         return None;
     }
-    let (pair, token0_is_main) = pair_for(token_in, token_out)?;
+    let Some((pair, token0_is_main)) = pair_for(token_in, token_out) else {
+        info!(%token_in, %token_out, "skip: pair not in universe");
+        return None;
+    };
     Some(Victim {
         pair,
         token0_is_main,

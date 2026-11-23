@@ -43,7 +43,9 @@ pub fn get_env() -> Result<Env> {
     if profit_recipient == Address::ZERO {
         anyhow::bail!("PROFIT_RECIPIENT_ADDRESS cannot be the zero address");
     }
-    let chain_id: u64 = env::var("CHAIN_ID").unwrap_or_else(|_| "1".to_string()).parse()
+    let chain_id: u64 = env::var("CHAIN_ID")
+        .unwrap_or_else(|_| "1".to_string())
+        .parse()
         .map_err(|_| anyhow::anyhow!("CHAIN_ID must be a valid u64"))?;
     if chain_id != 1 && chain_id != 11155111 {
         anyhow::bail!("CHAIN_ID must be 1 (mainnet) or 11155111 (sepolia)");

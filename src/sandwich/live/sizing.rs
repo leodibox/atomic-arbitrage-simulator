@@ -1,4 +1,4 @@
-﻿use super::router::Victim;
+use super::router::Victim;
 use crate::arbitrage::state::PoolState;
 use crate::common::constants::WETH;
 use alloy::primitives::U256;
@@ -42,9 +42,15 @@ struct Sides {
 fn sides(pool: &PoolState, victim: &Victim) -> Option<Sides> {
     let _ = victim;
     if pool.token0 == WETH {
-        Some(Sides { weth: pool.reserve0, token: pool.reserve1 })
+        Some(Sides {
+            weth: pool.reserve0,
+            token: pool.reserve1,
+        })
     } else if pool.token1 == WETH {
-        Some(Sides { weth: pool.reserve1, token: pool.reserve0 })
+        Some(Sides {
+            weth: pool.reserve1,
+            token: pool.reserve0,
+        })
     } else {
         None
     }
@@ -160,8 +166,12 @@ pub fn plan(pool: &PoolState, victim: &Victim, float: U256, max_share_bps: u64) 
         let span = hi - lo;
         let m1 = lo + span / U256::from(3u64);
         let m2 = hi - span / U256::from(3u64);
-        let p1 = evaluate(pool, victim, m1).map(|v| v.0).unwrap_or(U256::ZERO);
-        let p2 = evaluate(pool, victim, m2).map(|v| v.0).unwrap_or(U256::ZERO);
+        let p1 = evaluate(pool, victim, m1)
+            .map(|v| v.0)
+            .unwrap_or(U256::ZERO);
+        let p2 = evaluate(pool, victim, m2)
+            .map(|v| v.0)
+            .unwrap_or(U256::ZERO);
         if p1 > best.1 {
             best = (m1, p1);
         }

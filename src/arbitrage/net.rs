@@ -64,8 +64,7 @@ impl NetScan {
             .header
             .base_fee_per_gas
             .context("missing Ethereum base fee")?;
-        let max_fee_per_gas_wei = U256::from(base_fee) * U256::from(2)
-            + U256::from(self.tip_wei);
+        let max_fee_per_gas_wei = U256::from(base_fee) * U256::from(2) + U256::from(self.tip_wei);
         let gas = U256::from(self.gas_units) * max_fee_per_gas_wei;
         let aave = AavePremium::new(
             address!("87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2"),
@@ -138,18 +137,15 @@ impl NetScan {
                     rejected_by_net_floor += 1;
                     continue;
                 }
-                let prepared = match prepare_v2_flash_loan(
-                    &verified, &cycle, &limits, Some(&cost),
-                ) {
+                let prepared = match prepare_v2_flash_loan(&verified, &cycle, &limits, Some(&cost))
+                {
                     Ok(plan) => plan,
                     Err(_) => {
                         rejected_by_preflight += 1;
                         continue;
                     }
                 };
-                let candidate = match ReadOnlyCandidate::from_preflight(
-                    1, block, &prepared, net,
-                ) {
+                let candidate = match ReadOnlyCandidate::from_preflight(1, block, &prepared, net) {
                     Ok(candidate) => candidate,
                     Err(_) => {
                         rejected_by_preflight += 1;
@@ -181,9 +177,14 @@ impl NetScan {
         // They are NOT confirmed executable trades or proof of missed profits.
         if block % 25 == 0 {
             match super::gas_usd_diagnostic::read_gas_usd_diagnostic(
-                provider, block, self.gas_units, max_fee_per_gas_wei,
+                provider,
+                block,
+                self.gas_units,
+                max_fee_per_gas_wei,
                 header.header.timestamp,
-            ).await {
+            )
+            .await
+            {
                 Ok((max_usd_e8, quote_age_seconds, within_five_usd)) => {
                     let counts = usd_budget_tier_counts(max_usd_e8, positive.len());
                     info!(block, max_usd_e8 = %max_usd_e8, quote_age_seconds,
@@ -254,7 +255,9 @@ fn optimal_two_hop_v2_sizes(cache: &ReserveCache, loan_cap: U256) -> Vec<U256> {
                 // Both arms must be the same ordered WETH→token→WETH cycle.
                 let output = |amount: U256| -> Option<U256> {
                     let (token, mid) = first.quote(WETH, amount)?;
-                    if token != other { return None; }
+                    if token != other {
+                        return None;
+                    }
                     let (end, back) = second.quote(other, mid)?;
                     (end == WETH).then_some(back)
                 };
@@ -262,9 +265,13 @@ fn optimal_two_hop_v2_sizes(cache: &ReserveCache, loan_cap: U256) -> Vec<U256> {
                 let mut hi = loan_cap;
                 // Fixed iteration bound; no RPC or unbounded search.
                 for _ in 0..128 {
-                    if hi <= lo + U256::from(4u64) { break; }
+                    if hi <= lo + U256::from(4u64) {
+                        break;
+                    }
                     let step = (hi - lo) / U256::from(3u64);
-                    if step.is_zero() { break; }
+                    if step.is_zero() {
+                        break;
+                    }
                     let a = lo + step;
                     let b = hi - step;
                     let oa = output(a).unwrap_or_default();
@@ -276,8 +283,13 @@ fn optimal_two_hop_v2_sizes(cache: &ReserveCache, loan_cap: U256) -> Vec<U256> {
                     match (left, right) {
                         (Some(l), Some(r)) if l < r => lo = a,
                         (Some(l), Some(r)) if l > r => hi = b,
-                        (Some(_), Some(_)) => { lo = a; hi = b; },
-                        _ => { break; } // fail closed on numerical overflow
+                        (Some(_), Some(_)) => {
+                            lo = a;
+                            hi = b;
+                        }
+                        _ => {
+                            break;
+                        } // fail closed on numerical overflow
                     }
                 }
                 // Integer rounding can shift the argmax a few wei.
@@ -285,7 +297,9 @@ fn optimal_two_hop_v2_sizes(cache: &ReserveCache, loan_cap: U256) -> Vec<U256> {
                 let mut best = U256::ZERO;
                 let mut candidate = lo;
                 for _ in 0..=8 {
-                    if candidate > hi || candidate > loan_cap { break; }
+                    if candidate > hi || candidate > loan_cap {
+                        break;
+                    }
                     if let Some(out) = output(candidate) {
                         let gross = out.saturating_sub(candidate);
                         if gross > best {
@@ -334,7 +348,10 @@ pub fn largest_eligible_weth_v2_gap_bps(
         if other == WETH || weth_reserve < min_weth {
             continue;
         }
-        by_token.entry(other).or_default().push((weth_reserve, token_reserve));
+        by_token
+            .entry(other)
+            .or_default()
+            .push((weth_reserve, token_reserve));
     }
 
     let mut best: Option<u64> = None;
@@ -345,11 +362,13 @@ pub fn largest_eligible_weth_v2_gap_bps(
                 let (wb, tb) = pools[j];
                 // For uint112 canonical reserves, products fit in 224 bits.
                 // checked arithmetic also fails closed for unexpected input.
-                let (Some(left), Some(right)) =
-                    (ta.checked_mul(wb), tb.checked_mul(wa))
-                else { continue };
+                let (Some(left), Some(right)) = (ta.checked_mul(wb), tb.checked_mul(wa)) else {
+                    continue;
+                };
                 let lower = left.min(right);
-                if lower.is_zero() { continue; }
+                if lower.is_zero() {
+                    continue;
+                }
                 let spread = left.max(right) - lower;
                 // 10,000 basis points per 100%; clamp an extreme gap rather
                 // than overflow u64. A ratio is NOT an executable trade quote.
@@ -381,7 +400,9 @@ fn usd_budget_tier_counts(usd_e8: U256, eligible_route_count: usize) -> [usize; 
 fn v2_weth_probe_amounts(loan_cap: U256) -> Vec<U256> {
     let mut amounts = Vec::new();
     for percent in [100u64, 50, 40, 30, 25, 20, 10, 5, 2, 1] {
-        let Some(scaled) = loan_cap.checked_mul(U256::from(percent)) else { continue };
+        let Some(scaled) = loan_cap.checked_mul(U256::from(percent)) else {
+            continue;
+        };
         let amount = scaled / U256::from(100u64);
         if !amount.is_zero() && amount <= loan_cap && !amounts.contains(&amount) {
             amounts.push(amount);
@@ -417,29 +438,47 @@ mod tests {
         let pair_b = address!("0000000000000000000000000000000000000202");
         let mut cache = ReserveCache::default();
         cache.insert(PoolState {
-            pair: pair_a, token0: WETH, token1: token,
-            reserve0: U256::from(10_000u64), reserve1: U256::from(20_000u64),
-            fee_bps: 30, block: 100,
+            pair: pair_a,
+            token0: WETH,
+            token1: token,
+            reserve0: U256::from(10_000u64),
+            reserve1: U256::from(20_000u64),
+            fee_bps: 30,
+            block: 100,
         });
         cache.insert(PoolState {
-            pair: pair_b, token0: token, token1: WETH,
-            reserve0: U256::from(20_000u64), reserve1: U256::from(10_000u64),
-            fee_bps: 30, block: 100,
+            pair: pair_b,
+            token0: token,
+            token1: WETH,
+            reserve0: U256::from(20_000u64),
+            reserve1: U256::from(10_000u64),
+            fee_bps: 30,
+            block: 100,
         });
         let all = HashSet::from([pair_a, pair_b]);
-        assert_eq!(largest_eligible_weth_v2_gap_bps(&cache, &all,
-            U256::from(1u64)), Some(0));
+        assert_eq!(
+            largest_eligible_weth_v2_gap_bps(&cache, &all, U256::from(1u64)),
+            Some(0)
+        );
         // A real Sync reserve change shifts the price 1%, over 65 bps.
         cache.get_mut(&pair_a).unwrap().reserve1 = U256::from(20_200u64);
-        assert_eq!(largest_eligible_weth_v2_gap_bps(&cache, &all,
-            U256::from(1u64)), Some(100));
-        assert_eq!(largest_eligible_weth_v2_gap_bps(&cache,
-            &HashSet::from([pair_a]), U256::from(1u64)), None);
-        assert_eq!(largest_eligible_weth_v2_gap_bps(&cache, &all,
-            U256::from(11_000u64)), None);
+        assert_eq!(
+            largest_eligible_weth_v2_gap_bps(&cache, &all, U256::from(1u64)),
+            Some(100)
+        );
+        assert_eq!(
+            largest_eligible_weth_v2_gap_bps(&cache, &HashSet::from([pair_a]), U256::from(1u64)),
+            None
+        );
+        assert_eq!(
+            largest_eligible_weth_v2_gap_bps(&cache, &all, U256::from(11_000u64)),
+            None
+        );
         cache.get_mut(&pair_a).unwrap().fee_bps = 25;
-        assert_eq!(largest_eligible_weth_v2_gap_bps(&cache, &all,
-            U256::from(1u64)), None);
+        assert_eq!(
+            largest_eligible_weth_v2_gap_bps(&cache, &all, U256::from(1u64)),
+            None
+        );
     }
 
     #[test]
@@ -453,12 +492,27 @@ mod tests {
         let usdc_unit = 10u128.pow(6);
         let mut cache = ReserveCache::default();
         for (pair, token0, token1, reserve0, reserve1) in [
-            (address!("0000000000000000000000000000000000000201"),
-                WETH, usdc, 1_000 * weth_unit, 2_000_000 * usdc_unit),
-            (address!("0000000000000000000000000000000000000202"),
-                usdc, dai, 2_000_000 * usdc_unit, 2_000_000 * dai_unit),
-            (address!("0000000000000000000000000000000000000203"),
-                dai, WETH, 2_000_000 * dai_unit, 1_100 * weth_unit),
+            (
+                address!("0000000000000000000000000000000000000201"),
+                WETH,
+                usdc,
+                1_000 * weth_unit,
+                2_000_000 * usdc_unit,
+            ),
+            (
+                address!("0000000000000000000000000000000000000202"),
+                usdc,
+                dai,
+                2_000_000 * usdc_unit,
+                2_000_000 * dai_unit,
+            ),
+            (
+                address!("0000000000000000000000000000000000000203"),
+                dai,
+                WETH,
+                2_000_000 * dai_unit,
+                1_100 * weth_unit,
+            ),
         ] {
             cache.insert(PoolState {
                 pair,
@@ -474,11 +528,11 @@ mod tests {
         let cycles = find_cycles(&cache, &[WETH], U256::from(weth_unit), 3, U256::ZERO);
         assert!(cycles.iter().any(|cycle| {
             cycle.hops.len() == 3
-                && cycle.hops.iter().map(|hop| (hop.token_in, hop.token_out)).eq([
-                    (WETH, usdc),
-                    (usdc, dai),
-                    (dai, WETH),
-                ])
+                && cycle
+                    .hops
+                    .iter()
+                    .map(|hop| (hop.token_in, hop.token_out))
+                    .eq([(WETH, usdc), (usdc, dai), (dai, WETH)])
                 && !cycle.gross_profit.is_zero()
         }));
     }
@@ -490,24 +544,32 @@ mod tests {
         let mut cache = ReserveCache::default();
         cache.insert(PoolState {
             pair: address!("0000000000000000000000000000000000000201"),
-            token0: WETH, token1: token,
+            token0: WETH,
+            token1: token,
             reserve0: U256::from(1_000_000u64),
             reserve1: U256::from(2_000_000u64),
-            fee_bps: 30, block: 10,
+            fee_bps: 30,
+            block: 10,
         });
         cache.insert(PoolState {
             pair: address!("0000000000000000000000000000000000000202"),
-            token0: token, token1: WETH,
+            token0: token,
+            token1: WETH,
             reserve0: U256::from(1_800_000u64),
             reserve1: U256::from(1_000_000u64),
-            fee_bps: 30, block: 10,
+            fee_bps: 30,
+            block: 10,
         });
         let cap = U256::from(100_000u64);
         let optimized = optimal_two_hop_v2_sizes(&cache, cap);
         assert!(!optimized.is_empty(), "dislocation should have an optimum");
         assert!(optimized.iter().all(|x| !x.is_zero() && *x <= cap));
-        let first = cache.get(&address!("0000000000000000000000000000000000000201")).unwrap();
-        let second = cache.get(&address!("0000000000000000000000000000000000000202")).unwrap();
+        let first = cache
+            .get(&address!("0000000000000000000000000000000000000201"))
+            .unwrap();
+        let second = cache
+            .get(&address!("0000000000000000000000000000000000000202"))
+            .unwrap();
         assert!(optimized.iter().any(|&amount| {
             let (_, mid) = first.quote(WETH, amount).unwrap();
             let (_, output) = second.quote(token, mid).unwrap();
@@ -518,12 +580,30 @@ mod tests {
 
     #[test]
     fn usd_tiers_are_monotone_and_never_change_the_sender_cap() {
-        assert_eq!(usd_budget_tier_counts(U256::from(499_999_999u64), 3), [3, 3, 3, 3]);
-        assert_eq!(usd_budget_tier_counts(U256::from(500_000_001u64), 3), [0, 3, 3, 3]);
-        assert_eq!(usd_budget_tier_counts(U256::from(1_000_000_001u64), 2), [0, 0, 2, 2]);
-        assert_eq!(usd_budget_tier_counts(U256::from(1_500_000_001u64), 2), [0, 0, 0, 2]);
-        assert_eq!(usd_budget_tier_counts(U256::from(2_000_000_001u64), 2), [0, 0, 0, 0]);
-        assert_eq!(usd_budget_tier_counts(U256::from(600_000_000u64), 0), [0, 0, 0, 0]);
+        assert_eq!(
+            usd_budget_tier_counts(U256::from(499_999_999u64), 3),
+            [3, 3, 3, 3]
+        );
+        assert_eq!(
+            usd_budget_tier_counts(U256::from(500_000_001u64), 3),
+            [0, 3, 3, 3]
+        );
+        assert_eq!(
+            usd_budget_tier_counts(U256::from(1_000_000_001u64), 2),
+            [0, 0, 2, 2]
+        );
+        assert_eq!(
+            usd_budget_tier_counts(U256::from(1_500_000_001u64), 2),
+            [0, 0, 0, 2]
+        );
+        assert_eq!(
+            usd_budget_tier_counts(U256::from(2_000_000_001u64), 2),
+            [0, 0, 0, 0]
+        );
+        assert_eq!(
+            usd_budget_tier_counts(U256::from(600_000_000u64), 0),
+            [0, 0, 0, 0]
+        );
         assert_eq!(super::super::one_shot::MAX_TOTAL_GAS_USD_E8, 500_000_000);
     }
 
@@ -534,7 +614,9 @@ mod tests {
         assert!(amounts.contains(&U256::from(100_000u64)));
         assert!(amounts.contains(&U256::from(62_500u64)));
         assert!(amounts.contains(&U256::from(25_000u64)));
-        assert!(amounts.iter().all(|&amount| !amount.is_zero() && amount <= cap));
+        assert!(amounts
+            .iter()
+            .all(|&amount| !amount.is_zero() && amount <= cap));
         assert_eq!(amounts.len(), 10);
     }
 

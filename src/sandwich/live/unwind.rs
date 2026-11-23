@@ -54,7 +54,7 @@ pub fn spawn<P: Provider<Ethereum> + Clone + 'static>(
             if head <= last {
                 continue;
             }
-            last = head;            // Submission is not a sale: settle only on a receipt.
+            last = head; // Submission is not a sale: settle only on a receipt.
             let taken = std::mem::take(&mut inflight);
             let mut keep: Vec<Inflight> = Vec::new();
             let mut retry: Vec<Position> = Vec::new();
@@ -128,7 +128,15 @@ pub fn spawn<P: Provider<Ethereum> + Clone + 'static>(
                 let ceiling = cap.max(base);
                 let tip = (base + (ceiling - base).min(base)).min(ceiling);
                 let max_fee = (base * U256::from(3u64)).min(ceiling).max(tip);
-                match sign_execute(&signer, cfg.executor, cd, cfg.gas_units, max_fee, tip, nonce) {
+                match sign_execute(
+                    &signer,
+                    cfg.executor,
+                    cd,
+                    cfg.gas_units,
+                    max_fee,
+                    tip,
+                    nonce,
+                ) {
                     Ok(raw) => {
                         let hash = keccak256(&raw);
                         let _ = relays

@@ -1,9 +1,9 @@
+use super::execution_helpers::build_execute_calldata;
 use crate::common::constants::WETH;
 use crate::common::utils::to_h160;
-use super::execution_helpers::build_execute_calldata;
 use alloy::consensus::{Transaction as ConsensusTx, TxEnvelope};
 use alloy::network::{Ethereum, TransactionResponse};
-use alloy::primitives::{keccak256, Address, B256, Bytes, U256};
+use alloy::primitives::{keccak256, Address, Bytes, B256, U256};
 use alloy::providers::Provider;
 use alloy::rpc::types::Transaction;
 use revm::context::result::ExecutionResult;
@@ -33,7 +33,13 @@ fn slot(holder: Address, index: u64) -> B256 {
     keccak256(buf)
 }
 
-fn tx_env(from: Address, to: Address, data: Bytes, gas: u64, gas_price: u128) -> revm::context::TxEnv {
+fn tx_env(
+    from: Address,
+    to: Address,
+    data: Bytes,
+    gas: u64,
+    gas_price: u128,
+) -> revm::context::TxEnv {
     let mut tx = revm::context::TxEnv::default();
     tx.caller = to_h160(from);
     tx.kind = TxKind::Call(to_h160(to));
@@ -57,10 +63,21 @@ pub async fn confirm<P: Provider<Ethereum> + Clone + 'static>(
     token_out: Address,
     c: &Confirm,
 ) -> Option<U256> {
-    let mut db = CacheDB::new(WrapDatabaseAsync::new(AlloyDB::new(provider, block.into())).unwrap());
+    let mut db =
+        CacheDB::new(WrapDatabaseAsync::new(AlloyDB::new(provider, block.into())).unwrap());
 
-    db.insert_account_storage(WETH, U256::from_be_bytes(slot(c.executor, 3).0), c.weth_float).ok()?;
-    db.insert_account_storage(token_out, U256::from_be_bytes(slot(c.executor, 3).0), c.token_float).ok()?;
+    db.insert_account_storage(
+        WETH,
+        U256::from_be_bytes(slot(c.executor, 3).0),
+        c.weth_float,
+    )
+    .ok()?;
+    db.insert_account_storage(
+        token_out,
+        U256::from_be_bytes(slot(c.executor, 3).0),
+        c.token_float,
+    )
+    .ok()?;
     let (code_hash, code) = match db.basic(to_h160(c.executor)).ok().flatten() {
         Some(a) => (a.code_hash, a.code),
         None => (KECCAK_EMPTY, None),
@@ -84,7 +101,10 @@ pub async fn confirm<P: Provider<Ethereum> + Clone + 'static>(
         AccountInfo {
             balance: U256::from(100_000_000_000_000_000_000u128),
             nonce: owner_live.as_ref().map(|a| a.nonce).unwrap_or(0),
-            code_hash: owner_live.as_ref().map(|a| a.code_hash).unwrap_or(KECCAK_EMPTY),
+            code_hash: owner_live
+                .as_ref()
+                .map(|a| a.code_hash)
+                .unwrap_or(KECCAK_EMPTY),
             code: owner_live.and_then(|a| a.code),
             account_id: None,
         },
@@ -95,7 +115,8 @@ pub async fn confirm<P: Provider<Ethereum> + Clone + 'static>(
     let _ = db.basic(to_h160(WETH));
 
     let mut ctx = Context::mainnet().with_db(db);
-    ctx.cfg.set_spec_and_mainnet_gas_params(revm::primitives::hardfork::SpecId::CANCUN);
+    ctx.cfg
+        .set_spec_and_mainnet_gas_params(revm::primitives::hardfork::SpecId::CANCUN);
     ctx.block = BlockEnv {
         number: U256::from(block),
         basefee: base_fee.to::<u64>(),
@@ -117,7 +138,13 @@ pub async fn confirm<P: Provider<Ethereum> + Clone + 'static>(
     data.extend_from_slice(&[0u8; 12]);
     data.extend_from_slice(c.executor.as_slice());
     let pre = match evm
-        .transact_commit(tx_env(c.owner, token_out, Bytes::from(data), 30_000, base_fee.to::<u128>()))
+        .transact_commit(tx_env(
+            c.owner,
+            token_out,
+            Bytes::from(data),
+            30_000,
+            base_fee.to::<u128>(),
+        ))
         .ok()?
     {
         ExecutionResult::Success { output, .. } => {
@@ -129,13 +156,32 @@ pub async fn confirm<P: Provider<Ethereum> + Clone + 'static>(
         }
         _ => return None,
     };
-    let front = build_execute_calldata(block, U256::ZERO, &[(front_dir, pair, token_in, front_amount)]);
-    match evm.transact_commit(tx_env(c.owner, c.executor, front, 220_000, base_fee.to::<u128>())).ok()? {
+    let front = build_execute_calldata(
+        block,
+        U256::ZERO,
+        &[(front_dir, pair, token_in, front_amount)],
+    );
+    match evm
+        .transact_commit(tx_env(
+            c.owner,
+            c.executor,
+            front,
+            220_000,
+            base_fee.to::<u128>(),
+        ))
+        .ok()?
+    {
         ExecutionResult::Success { .. } => {}
         _ => return None,
     }
 
-    let mut vtx = tx_env(victim.from(), victim.to()?, victim.input().clone(), victim.gas_limit(), ConsensusTx::max_fee_per_gas(victim));
+    let mut vtx = tx_env(
+        victim.from(),
+        victim.to()?,
+        victim.input().clone(),
+        victim.gas_limit(),
+        ConsensusTx::max_fee_per_gas(victim),
+    );
     vtx.gas_price = ConsensusTx::max_fee_per_gas(victim);
     vtx.value = victim.value();
     match evm.transact_commit(vtx).ok()? {
@@ -148,7 +194,13 @@ pub async fn confirm<P: Provider<Ethereum> + Clone + 'static>(
     data.extend_from_slice(&[0u8; 12]);
     data.extend_from_slice(c.executor.as_slice());
     let post = match evm
-        .transact_commit(tx_env(c.owner, token_out, Bytes::from(data), 30_000, base_fee.to::<u128>()))
+        .transact_commit(tx_env(
+            c.owner,
+            token_out,
+            Bytes::from(data),
+            30_000,
+            base_fee.to::<u128>(),
+        ))
         .ok()?
     {
         ExecutionResult::Success { output, .. } => {
@@ -165,8 +217,21 @@ pub async fn confirm<P: Provider<Ethereum> + Clone + 'static>(
         return None;
     }
 
-    let back = build_execute_calldata(block, min_profit, &[(!front_dir, pair, token_out, back_amount)]);
-    match evm.transact_commit(tx_env(c.owner, c.executor, back, 220_000, base_fee.to::<u128>())).ok()? {
+    let back = build_execute_calldata(
+        block,
+        min_profit,
+        &[(!front_dir, pair, token_out, back_amount)],
+    );
+    match evm
+        .transact_commit(tx_env(
+            c.owner,
+            c.executor,
+            back,
+            220_000,
+            base_fee.to::<u128>(),
+        ))
+        .ok()?
+    {
         ExecutionResult::Success { .. } => {}
         _ => return None,
     }

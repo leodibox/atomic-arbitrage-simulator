@@ -83,7 +83,9 @@ pub async fn sign_and_send<P: Provider<Ethereum>>(
     request: &SendRequest,
 ) -> Result<B256> {
     let tx = build_unsigned(signer.address(), request)?;
-    let mut unsigned = tx.build_unsigned().map_err(|error| anyhow::anyhow!("{error}"))?;
+    let mut unsigned = tx
+        .build_unsigned()
+        .map_err(|error| anyhow::anyhow!("{error}"))?;
     let signature = signer.sign_transaction_sync(&mut unsigned)?;
     let encoded = unsigned.into_signed(signature).encoded_2718();
     let pending = provider

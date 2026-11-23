@@ -94,11 +94,17 @@ fn walk(
     results: &mut Vec<Cycle>,
     freshest_block: u64,
 ) {
-    if hops.len() >= max_hops { return; }
+    if hops.len() >= max_hops {
+        return;
+    }
 
     for pool in pools {
-        if used_pairs.contains(&pool.pair()) { continue; }
-        let Some((next, output)) = pool.quote(current, amount) else { continue; };
+        if used_pairs.contains(&pool.pair()) {
+            continue;
+        }
+        let Some((next, output)) = pool.quote(current, amount) else {
+            continue;
+        };
         used_pairs.insert(pool.pair());
         hops.push(Hop {
             pair: pool.pair(),
@@ -151,21 +157,30 @@ mod tests {
         let mut cache = ReserveCache::default();
         cache.insert(PoolState {
             pair: address!("0000000000000000000000000000000000000010"),
-            token0: a, token1: b,
-            reserve0: U256::from(1_000_000u64), reserve1: U256::from(3_000_000u64),
-            fee_bps: 30, block: 10,
+            token0: a,
+            token1: b,
+            reserve0: U256::from(1_000_000u64),
+            reserve1: U256::from(3_000_000u64),
+            fee_bps: 30,
+            block: 10,
         });
         cache.insert(PoolState {
             pair: address!("0000000000000000000000000000000000000020"),
-            token0: b, token1: a,
-            reserve0: U256::from(1_000_000u64), reserve1: U256::from(900_000u64),
-            fee_bps: 30, block: 10,
+            token0: b,
+            token1: a,
+            reserve0: U256::from(1_000_000u64),
+            reserve1: U256::from(900_000u64),
+            fee_bps: 30,
+            block: 10,
         });
         cache.insert(PoolState {
             pair: address!("0000000000000000000000000000000000000030"),
-            token0: a, token1: c,
-            reserve0: U256::from(1u64), reserve1: U256::from(1u64),
-            fee_bps: 30, block: 10,
+            token0: a,
+            token1: c,
+            reserve0: U256::from(1u64),
+            reserve1: U256::from(1u64),
+            fee_bps: 30,
+            block: 10,
         });
         let cycles = find_cycles(&cache, &[a], U256::from(1_000u64), 3, U256::from(1u64));
         assert!(!cycles.is_empty());

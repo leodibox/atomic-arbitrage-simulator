@@ -61,7 +61,10 @@ pub struct Reservation {
 pub fn acquire(dir: &Path, key: &ReservationKey) -> Result<Reservation> {
     ensure!(key.chain_id == 1, "reservation is Ethereum mainnet only");
     ensure!(key.sender != Address::ZERO, "reservation needs a sender");
-    ensure!(key.nonce > 0 || key.gas_limit > 0, "reservation needs a candidate");
+    ensure!(
+        key.nonce > 0 || key.gas_limit > 0,
+        "reservation needs a candidate"
+    );
     fs::create_dir_all(dir)
         .with_context(|| format!("cannot create reservation dir {}", dir.display()))?;
     let id = key.id();
@@ -80,7 +83,11 @@ pub fn acquire(dir: &Path, key: &ReservationKey) -> Result<Reservation> {
     file.sync_all()?;
     drop(file);
     sync_dir(dir)?;
-    Ok(Reservation { id, path, key: key.clone() })
+    Ok(Reservation {
+        id,
+        path,
+        key: key.clone(),
+    })
 }
 
 impl Reservation {
@@ -153,10 +160,8 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!(
-            "sandooo-res-{}-{tag}-{nanos}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("sandooo-res-{}-{tag}-{nanos}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
         dir
     }

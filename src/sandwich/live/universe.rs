@@ -1,5 +1,7 @@
 use super::config::SandwichConfig;
-use crate::arbitrage::rpc::{discover_weth_v2, load_allowlisted_reserves, verify_allowlisted_tokens};
+use crate::arbitrage::rpc::{
+    discover_weth_v2, load_allowlisted_reserves, verify_allowlisted_tokens,
+};
 use crate::arbitrage::state::{sync_topic, PoolState, ReserveCache};
 use crate::common::constants::WETH;
 use alloy::network::Ethereum;
@@ -37,7 +39,11 @@ pub struct Universe {
 }
 
 fn key(a: Address, b: Address) -> (Address, Address) {
-    if a < b { (a, b) } else { (b, a) }
+    if a < b {
+        (a, b)
+    } else {
+        (b, a)
+    }
 }
 
 impl Universe {
@@ -57,7 +63,10 @@ impl Universe {
     }
 
     pub fn is_known(&self, pair: &Address) -> bool {
-        self.pairs.try_read().map(|m| m.contains_key(pair)).unwrap_or(false)
+        self.pairs
+            .try_read()
+            .map(|m| m.contains_key(pair))
+            .unwrap_or(false)
     }
 
     pub async fn fresh_pool(&self, pair: &Address, max_age: u64) -> Option<PoolState> {
@@ -73,7 +82,13 @@ impl Universe {
         let mut pairs = self.pairs.write().await;
         let mut index = self.index.write().await;
         for (pair, t0, t1) in pools {
-            pairs.insert(pair, PairMeta { token0: t0, token1: t1 });
+            pairs.insert(
+                pair,
+                PairMeta {
+                    token0: t0,
+                    token1: t1,
+                },
+            );
             index.insert(key(t0, t1), pair);
         }
     }
@@ -143,7 +158,11 @@ impl Universe {
                             let pair = log.address();
                             let block = log.block_number.unwrap_or_default();
                             head.fetch_max(block, Ordering::Relaxed);
-                            cache.write().await.apply_sync_log(pair, log.data().data.as_ref(), block);
+                            cache.write().await.apply_sync_log(
+                                pair,
+                                log.data().data.as_ref(),
+                                block,
+                            );
                         }
                         warn!("sync stream ended, resubscribing");
                     }

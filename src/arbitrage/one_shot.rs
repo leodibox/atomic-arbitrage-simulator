@@ -60,15 +60,29 @@ pub fn maximum_gas_cost_usd_e8(
 /// acquiring the single-use reservation; this only checks supplied evidence.
 pub fn assess_before_reservation(check: &OneShotCheck) -> Result<U256> {
     ensure!(check.chain_id == 1, "only Ethereum mainnet is supported");
-    ensure!(check.price_age_seconds <= MAX_PRICE_AGE_SECONDS, "ETH/USD quote is stale");
-    ensure!(check.exact_sender_simulation_succeeded, "exact transaction simulation missing or failed");
-    ensure!(check.nonce_and_contract_verified, "nonce, owner, pause or contract identity unverified");
-    ensure!(check.onchain_pair_and_loan_caps_verified, "pair/loan cap unverified");
-    ensure!(check.route_profitable_after_all_costs, "positive executable profit unverified");
+    ensure!(
+        check.price_age_seconds <= MAX_PRICE_AGE_SECONDS,
+        "ETH/USD quote is stale"
+    );
+    ensure!(
+        check.exact_sender_simulation_succeeded,
+        "exact transaction simulation missing or failed"
+    );
+    ensure!(
+        check.nonce_and_contract_verified,
+        "nonce, owner, pause or contract identity unverified"
+    );
+    ensure!(
+        check.onchain_pair_and_loan_caps_verified,
+        "pair/loan cap unverified"
+    );
+    ensure!(
+        check.route_profitable_after_all_costs,
+        "positive executable profit unverified"
+    );
 
-    let worst_usd_e8 = maximum_gas_cost_usd_e8(
-        check.gas_limit, check.max_fee_per_gas_wei, check.eth_usd_e8,
-    )?;
+    let worst_usd_e8 =
+        maximum_gas_cost_usd_e8(check.gas_limit, check.max_fee_per_gas_wei, check.eth_usd_e8)?;
     ensure!(
         worst_usd_e8 <= U256::from(MAX_TOTAL_GAS_USD_E8),
         "worst-case fee exceeds $5 total gas budget"
@@ -120,7 +134,10 @@ mod tests {
     #[test]
     fn accepts_less_than_five_dollars_with_buffer() {
         // 100,000 gas × 10 gwei = .001 ETH = $3; +10% buffer = $3.30.
-        assert_eq!(assess_before_reservation(&permitted()).unwrap(), U256::from(330_000_000u64));
+        assert_eq!(
+            assess_before_reservation(&permitted()).unwrap(),
+            U256::from(330_000_000u64)
+        );
     }
 
     #[test]
@@ -167,11 +184,8 @@ mod tests {
 
     #[test]
     fn cannot_understate_fractional_usd_cost() {
-        let quote = maximum_gas_cost_usd_e8(
-            1,
-            U256::from(1),
-            U256::from(300_000_000_000u64),
-        ).unwrap();
+        let quote =
+            maximum_gas_cost_usd_e8(1, U256::from(1), U256::from(300_000_000_000u64)).unwrap();
         assert_eq!(quote, U256::from(1));
     }
 

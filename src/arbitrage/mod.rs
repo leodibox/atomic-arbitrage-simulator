@@ -3,11 +3,11 @@
 
 pub mod candidate;
 pub mod cycles;
-pub mod metrics;
-pub mod net;
 pub mod gas_usd_diagnostic;
 pub mod guarded_wiring;
 pub mod live;
+pub mod metrics;
+pub mod net;
 pub mod one_shot;
 pub mod preflight;
 pub mod rpc;

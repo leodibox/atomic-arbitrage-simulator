@@ -17,10 +17,18 @@ pub struct MetricsSnapshot {
 }
 
 impl Metrics {
-    pub fn candidate(&self) { self.candidates.fetch_add(1, Ordering::Relaxed); }
-    pub fn simulation(&self) { self.simulations.fetch_add(1, Ordering::Relaxed); }
-    pub fn profitable(&self) { self.profitable.fetch_add(1, Ordering::Relaxed); }
-    pub fn rejected(&self) { self.rejected.fetch_add(1, Ordering::Relaxed); }
+    pub fn candidate(&self) {
+        self.candidates.fetch_add(1, Ordering::Relaxed);
+    }
+    pub fn simulation(&self) {
+        self.simulations.fetch_add(1, Ordering::Relaxed);
+    }
+    pub fn profitable(&self) {
+        self.profitable.fetch_add(1, Ordering::Relaxed);
+    }
+    pub fn rejected(&self) {
+        self.rejected.fetch_add(1, Ordering::Relaxed);
+    }
 
     pub fn snapshot(&self) -> MetricsSnapshot {
         MetricsSnapshot {

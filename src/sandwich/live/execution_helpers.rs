@@ -73,7 +73,9 @@ pub fn sign_execute(
 pub async fn cycle_open<P: Provider<Ethereum>>(provider: &P, executor: Address) -> Option<bool> {
     let req = TransactionRequest::default()
         .to(executor)
-        .input(TransactionInput::both(Bytes::from(cycle_open_selector().to_vec())));
+        .input(TransactionInput::both(Bytes::from(
+            cycle_open_selector().to_vec(),
+        )));
     match provider.call(req).await {
         Ok(res) if res.len() >= 32 => Some(res[31] == 1),
         _ => None,
@@ -89,7 +91,11 @@ pub async fn erc20_balance<P: Provider<Ethereum>>(
     data.extend_from_slice(&[0u8; 12]);
     data.extend_from_slice(owner.as_slice());
     let res = provider
-        .call(TransactionRequest::default().to(token).input(TransactionInput::both(Bytes::from(data))))
+        .call(
+            TransactionRequest::default()
+                .to(token)
+                .input(TransactionInput::both(Bytes::from(data))),
+        )
         .await?;
     if res.len() < 32 {
         return Ok(U256::ZERO);

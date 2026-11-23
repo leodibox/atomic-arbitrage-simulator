@@ -65,7 +65,9 @@ pub async fn send_bundle<P: Provider<Ethereum>>(
             "maxTimestamp": u64::MAX,
         }
     ]);
-    Ok(provider.raw_request("eth_sendBundle".into(), params).await?)
+    Ok(provider
+        .raw_request("eth_sendBundle".into(), params)
+        .await?)
 }
 
 pub async fn simulate_bundle<P: Provider<Ethereum>>(
@@ -78,7 +80,11 @@ pub async fn simulate_bundle<P: Provider<Ethereum>>(
             "blockNumber": format!("{:#x}", bundle.block),
         }
     ]);
-    Ok(provider.raw_request("eth_callBundle".into(), params).await?)
+    Ok(provider
+        .raw_request("eth_callBundle".into(), params)
+        .await?)
 }
 
-pub fn coinbase_payment(bribe: U256) -> (Address, U256) { (COINBASE, bribe) }
+pub fn coinbase_payment(bribe: U256) -> (Address, U256) {
+    (COINBASE, bribe)
+}

@@ -27,21 +27,29 @@ impl ReadOnlyCandidate {
         net_after_modeled_costs: U256,
     ) -> Result<Self> {
         ensure!(chain_id == 1, "read-only handoff is Ethereum mainnet only");
-        ensure!(checked_block > 0 && prepared.quoted_at_block == checked_block,
-            "candidate state and preflight block mismatch");
-        ensure!(prepared.asset != Address::ZERO && !prepared.amount.is_zero(),
-            "missing loan asset or amount");
-        ensure!(!net_after_modeled_costs.is_zero(),
-            "no modeled net profit; do not create candidate");
-        ensure!(prepared.pair_path.len() % 21 == 0,
-            "invalid legacy V2 path encoding");
+        ensure!(
+            checked_block > 0 && prepared.quoted_at_block == checked_block,
+            "candidate state and preflight block mismatch"
+        );
+        ensure!(
+            prepared.asset != Address::ZERO && !prepared.amount.is_zero(),
+            "missing loan asset or amount"
+        );
+        ensure!(
+            !net_after_modeled_costs.is_zero(),
+            "no modeled net profit; do not create candidate"
+        );
+        ensure!(
+            prepared.pair_path.len() % 21 == 0,
+            "invalid legacy V2 path encoding"
+        );
         let pair_count = prepared.pair_path.len() / 21;
-        ensure!((2..=3).contains(&pair_count),
-            "unsupported V2 route length");
-        ensure!(!prepared.calldata.is_empty(),
-            "missing preflight calldata");
-        ensure!(!prepared.min_profit_onchain.is_zero(),
-            "missing positive onchain minimum profit");
+        ensure!((2..=3).contains(&pair_count), "unsupported V2 route length");
+        ensure!(!prepared.calldata.is_empty(), "missing preflight calldata");
+        ensure!(
+            !prepared.min_profit_onchain.is_zero(),
+            "missing positive onchain minimum profit"
+        );
         // A hash is a correlation identifier, not proof that a transaction
         // using these bytes would succeed.
         Ok(Self {
@@ -76,9 +84,7 @@ mod tests {
     #[test]
     fn produces_deterministic_hash_without_transaction_submission() {
         let p = prepared();
-        let candidate = ReadOnlyCandidate::from_preflight(
-            1, 100, &p, U256::from(150u64)
-        ).unwrap();
+        let candidate = ReadOnlyCandidate::from_preflight(1, 100, &p, U256::from(150u64)).unwrap();
         assert_eq!(candidate.calldata_hash, keccak256(&p.calldata));
         assert_eq!(candidate.pair_count, 2);
         assert_eq!(candidate.block, 100);

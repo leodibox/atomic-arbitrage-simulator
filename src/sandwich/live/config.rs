@@ -3,10 +3,18 @@ use anyhow::{bail, Context, Result};
 use std::env;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Feed { Txpool, FullPending, Alchemy }
+pub enum Feed {
+    Txpool,
+    FullPending,
+    Alchemy,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RelayKind { Flashbots, Titan, Bloxroute }
+pub enum RelayKind {
+    Flashbots,
+    Titan,
+    Bloxroute,
+}
 
 impl RelayKind {
     fn parse(v: &str) -> Result<Self> {
@@ -17,7 +25,9 @@ impl RelayKind {
             other => bail!("unknown relay kind {other}"),
         }
     }
-    pub fn signs_header(self) -> bool { matches!(self, Self::Flashbots | Self::Titan) }
+    pub fn signs_header(self) -> bool {
+        matches!(self, Self::Flashbots | Self::Titan)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -68,7 +78,9 @@ fn req(k: &str) -> Result<String> {
 }
 
 fn addr(k: &str) -> Result<Address> {
-    req(k)?.parse().map_err(|_| anyhow::anyhow!("{k} is not an address"))
+    req(k)?
+        .parse()
+        .map_err(|_| anyhow::anyhow!("{k} is not an address"))
 }
 
 fn num(k: &str, d: u64) -> Result<u64> {
@@ -86,7 +98,9 @@ fn wei(k: &str, d: &str) -> Result<U256> {
 }
 
 fn flag(k: &str, d: bool) -> bool {
-    env::var(k).map(|v| v.trim().eq_ignore_ascii_case("true")).unwrap_or(d)
+    env::var(k)
+        .map(|v| v.trim().eq_ignore_ascii_case("true"))
+        .unwrap_or(d)
 }
 
 fn parse_relays(raw: &str) -> Result<Vec<RelayConfig>> {
@@ -100,7 +114,10 @@ fn parse_relays(raw: &str) -> Result<Vec<RelayConfig>> {
             name: parts[0].to_string(),
             url: parts[1].to_string(),
             kind: RelayKind::parse(parts[2])?,
-            auth: parts.get(3).map(|v| v.to_string()).filter(|v| !v.is_empty()),
+            auth: parts
+                .get(3)
+                .map(|v| v.to_string())
+                .filter(|v| !v.is_empty()),
         });
     }
     Ok(out)
@@ -123,12 +140,22 @@ impl SandwichConfig {
                 .split(',')
                 .map(str::trim)
                 .filter(|v| !v.is_empty())
-                .map(|v| v.parse::<Address>().map_err(|_| anyhow::anyhow!("bad router {v}")))
+                .map(|v| {
+                    v.parse::<Address>()
+                        .map_err(|_| anyhow::anyhow!("bad router {v}"))
+                })
                 .collect::<Result<Vec<_>>>()?,
-            _ => DEFAULT_ROUTERS.iter().map(|v| v.parse::<Address>().unwrap()).collect(),
+            _ => DEFAULT_ROUTERS
+                .iter()
+                .map(|v| v.parse::<Address>().unwrap())
+                .collect(),
         };
 
-        let feed = match env::var("SANDWICH_FEED").unwrap_or_default().to_ascii_lowercase().as_str() {
+        let feed = match env::var("SANDWICH_FEED")
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .as_str()
+        {
             "full" => Feed::FullPending,
             "txpool" => Feed::Txpool,
             _ => Feed::Alchemy,

@@ -1,9 +1,4 @@
-use alloy::{
-    network::Ethereum,
-    primitives::U256,
-    providers::Provider,
-    rpc::types::Transaction,
-};
+use alloy::{network::Ethereum, primitives::U256, providers::Provider, rpc::types::Transaction};
 use anyhow::Result;
 use futures::StreamExt;
 use tokio::sync::broadcast;
@@ -51,7 +46,10 @@ pub async fn stream_pending_transactions<P: Provider<Ethereum>>(
     provider: P,
     tx: broadcast::Sender<Event>,
 ) -> Result<()> {
-    let mut sub = provider.subscribe_pending_transactions().await?.into_stream();
+    let mut sub = provider
+        .subscribe_pending_transactions()
+        .await?
+        .into_stream();
     while let Some(hash) = sub.next().await {
         if let Ok(Some(txn)) = provider.get_transaction_by_hash(hash).await {
             let _ = tx.send(Event::PendingTx(NewPendingTx { tx: txn }));
