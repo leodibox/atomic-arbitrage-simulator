@@ -35,7 +35,7 @@ contract GuardedRestrictedOperatorTest is Test {
     }
 
     function path() internal view returns (bytes memory) {
-        return abi.encodePacked(address(cheap), uint8(1), address(expensive), uint8(0));
+        return abi.encodePacked(uint8(0), address(cheap), uint8(1), uint8(0), address(expensive), uint8(0));
     }
 
     function testOperatorDeniedByDefault() public {

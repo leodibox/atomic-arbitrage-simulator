@@ -116,8 +116,8 @@ contract GuardedPositiveUsdtForkTest is Test {
         uint256 premium = (amount * IAavePremiumFork(AAVE).FLASHLOAN_PREMIUM_TOTAL() + 9999) / 10000;
 
         bytes memory path = usdtLoan
-            ? abi.encodePacked(address(cheap), uint8(0), address(expensive), uint8(1))
-            : abi.encodePacked(address(expensive), uint8(1), address(cheap), uint8(0));
+            ? abi.encodePacked(uint8(0), address(cheap), uint8(0), uint8(0), address(expensive), uint8(1))
+            : abi.encodePacked(uint8(0), address(expensive), uint8(1), uint8(0), address(cheap), uint8(0));
         uint256 gasBefore = gasleft();
         arb.executeArbitrage(asset, amount, path, 1);
         uint256 measured = gasBefore - gasleft();
