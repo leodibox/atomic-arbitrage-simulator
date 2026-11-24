@@ -64,6 +64,11 @@ pub fn supports_legacy_v2_pool(pool: &PoolState) -> bool {
     pool.fee_bps == 30 && pool.token0 != USDT && pool.token1 != USDT
 }
 
+
+/// Max share of a V3 pool's liquidity a single hop may consume, in bps.
+/// The quote engine is single-tick, so above this the price stops being
+/// trustworthy; the cap is a constant, not an env var, so it cannot drift.
+const MAX_V3_LIQUIDITY_SHARE_BPS: u64 = 50;
 /// Validate local execution compatibility and build calldata for
 /// FlashLoanArb.executeArbitrage(). Passing here is not enough to send:
 /// the caller MUST independently simulate the exact transaction at the latest
@@ -108,44 +113,89 @@ pub fn prepare_v2_flash_loan(
         "gas spend exceeds permitted ETH budget"
     );
 
-    let mut path = Vec::with_capacity(21 * cycle.hops.len());
-    let mut seen_pairs = HashSet::new();
+    let mut path = Vec::with_capacity(22 * cycle.hops.len());
+    let mut seen_pools = HashSet::new();
     let mut current_token = cycle.start;
     let mut current_amount = cycle.amount_in;
-    for hop in &cycle.hops {
-        ensure!(seen_pairs.insert(hop.pair), "duplicate pair in route");
-        // Crucial: get() excludes V3 pools, whose swap() has different ABI.
-        let Some(pool) = cache.get(&hop.pair) else {
-            bail!("unknown or V3 pool in a V2-only executable route");
-        };
+        for hop in &cycle.hops {
+        ensure!(seen_pools.insert(hop.pair), "duplicate pool in route");
+        ensure!(hop.pair != Address::ZERO, "zero pool address");
+
+        // V3 pools take priority: their swap() ABI differs and needs a callback.
+        let (token0, token1, block, zero_for_one, expected_token, expected_amount, kind) =
+            if let Some(v3) = cache.get_v3(&hop.pair) {
+                ensure!(
+                    current_amount * U256::from(10_000u64)
+                        <= v3.liquidity * U256::from(MAX_V3_LIQUIDITY_SHARE_BPS),
+                    "V3 hop input exceeds trusted share of pool liquidity"
+                );
+                let zero_for_one = if current_token == v3.token0 {
+                    true
+                } else if current_token == v3.token1 {
+                    false
+                } else {
+                    bail!("route input does not match pool token0/token1");
+                };
+                let (token_out, amount_out) = v3
+                    .quote(current_token, current_amount)
+                    .ok_or_else(|| anyhow::anyhow!("V3 pool quote unavailable"))?;
+                (
+                    v3.token0,
+                    v3.token1,
+                    v3.block,
+                    zero_for_one,
+                    token_out,
+                    amount_out,
+                    1u8,
+                )
+            } else {
+                let pool = cache
+                    .get(&hop.pair)
+                    .ok_or_else(|| anyhow::anyhow!("unknown pool in executable route"))?;
+                ensure!(
+                    supports_legacy_v2_pool(pool),
+                    "V2 executor requires 30 bps pairs and supported token transfers"
+                );
+                let zero_for_one = if current_token == pool.token0 {
+                    true
+                } else if current_token == pool.token1 {
+                    false
+                } else {
+                    bail!("route input does not match pair token0/token1");
+                };
+                let (token_out, amount_out) = pool
+                    .quote(current_token, current_amount)
+                    .ok_or_else(|| anyhow::anyhow!("pair quote unavailable"))?;
+                (
+                    pool.token0,
+                    pool.token1,
+                    pool.block,
+                    zero_for_one,
+                    token_out,
+                    amount_out,
+                    0u8,
+                )
+            };
+
         ensure!(
-            supports_legacy_v2_pool(pool),
-            "V2 executor requires 30 bps pairs and supported token transfers"
+            token0 != token1 && token0 != Address::ZERO && token1 != Address::ZERO,
+            "degenerate pool"
         );
         ensure!(
-            pool.block > 0
-                && pool.block <= limits.current_block
-                && limits.current_block - pool.block <= limits.max_pool_age_blocks,
+            block > 0
+                && block <= limits.current_block
+                && limits.current_block - block <= limits.max_pool_age_blocks,
             "pool state is stale or from the future"
         );
         ensure!(
             hop.token_in == current_token && hop.amount_in == current_amount,
             "discontinuous route"
         );
-        let zero_for_one = if current_token == pool.token0 {
-            true
-        } else if current_token == pool.token1 {
-            false
-        } else {
-            bail!("route input does not match pair token0/token1");
-        };
-        let (expected_token, expected_amount) = pool
-            .quote(current_token, current_amount)
-            .ok_or_else(|| anyhow::anyhow!("pair quote unavailable"))?;
         ensure!(
             hop.token_out == expected_token && hop.amount_out == expected_amount,
             "route output does not match current pool quote"
         );
+        path.push(kind);
         path.extend_from_slice(hop.pair.as_slice());
         path.push(u8::from(zero_for_one));
         current_token = expected_token;
@@ -194,6 +244,7 @@ pub fn prepare_v2_flash_loan(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::arbitrage::state::V3PoolState;
     use crate::arbitrage::{find_cycles, PoolState};
 
     #[test]
@@ -210,6 +261,74 @@ mod tests {
         assert!(!supports_legacy_v2_pool(&pool));
     }
 
+
+    /// V3-only cycle: 1 USDC -> 3 WETH, then 1 WETH -> 0.5 USDC.
+    fn v3_fixture() -> (ReserveCache, Cycle, ExecutionLimits, GasQuote) {
+        let usdc = address!("0000000000000000000000000000000000000001");
+        let weth = address!("0000000000000000000000000000000000000002");
+        let mut cache = ReserveCache::default();
+        cache.insert_v3(V3PoolState {
+            pair: address!("0000000000000000000000000000000000000010"),
+            token0: usdc,
+            token1: weth,
+            sqrt_price_x96: U256::from(113_510u64) << 80,
+            liquidity: U256::from(1_000_000u64),
+            tick: 0,
+            fee_bps: 5,
+            block: 100,
+        });
+        cache.insert_v3(V3PoolState {
+            pair: address!("0000000000000000000000000000000000000020"),
+            token0: weth,
+            token1: usdc,
+            sqrt_price_x96: U256::from(46_341u64) << 80,
+            liquidity: U256::from(1_000_000u64),
+            tick: 0,
+            fee_bps: 5,
+            block: 100,
+        });
+        let cycle = find_cycles(&cache, &[usdc], U256::from(100u64), 3, U256::ZERO)
+            .into_iter()
+            .find(|c| !c.gross_profit.is_zero())
+            .unwrap();
+        let limits = ExecutionLimits {
+            current_block: 100,
+            max_pool_age_blocks: 1,
+            max_hops: 3,
+            max_flash_loan: U256::from(10_000u64),
+            max_gas_spend_wei: U256::from(10_000u64),
+            premium_bps: 5,
+            min_profit_after_gas_in_asset: U256::from(1u64),
+        };
+        let gas = GasQuote {
+            gas_spend_wei: U256::from(100u64),
+            gas_cost_in_asset: U256::from(1u64),
+            quoted_at_block: 100,
+        };
+        (cache, cycle, limits, gas)
+    }
+
+    #[test]
+    fn builds_v3_hops_with_kind_byte() {
+        let (cache, cycle, limits, gas) = v3_fixture();
+        let plan = prepare_v2_flash_loan(&cache, &cycle, &limits, Some(&gas)).unwrap();
+        assert_eq!(plan.pair_path.len(), 44);
+        assert_eq!(plan.pair_path[0], 1, "kind byte before first pool");
+        assert_eq!(plan.pair_path[21], 1, "first direction");
+        assert_eq!(plan.pair_path[22], 1, "kind byte before second pool");
+        assert_eq!(plan.pair_path[43], 1, "second direction");
+    }
+
+    #[test]
+    fn refuses_v3_hop_above_trusted_liquidity_share() {
+        let (mut cache, cycle, limits, gas) = v3_fixture();
+        cache
+            .get_v3_mut(&cycle.hops[0].pair)
+            .unwrap()
+            .liquidity = U256::from(10u64);
+        let err = prepare_v2_flash_loan(&cache, &cycle, &limits, Some(&gas)).unwrap_err();
+        assert!(err.to_string().contains("trusted share"), "got {err}");
+    }
     fn fixture() -> (ReserveCache, Cycle, ExecutionLimits, GasQuote) {
         let usdc = address!("0000000000000000000000000000000000000001");
         let weth = address!("0000000000000000000000000000000000000002");
@@ -257,9 +376,9 @@ mod tests {
     fn builds_v2_only_contract_calldata() {
         let (cache, cycle, limits, gas) = fixture();
         let plan = prepare_v2_flash_loan(&cache, &cycle, &limits, Some(&gas)).unwrap();
-        assert_eq!(plan.pair_path.len(), 42);
-        assert_eq!(plan.pair_path[20], 1);
-        assert_eq!(plan.pair_path[41], 1); // second pair is token0=weth, takes weth
+        assert_eq!(plan.pair_path.len(), 44);
+        assert_eq!(plan.pair_path[21], 1);
+        assert_eq!(plan.pair_path[43], 1); // second pair is token0=weth, takes weth
         assert_eq!(plan.min_profit_onchain, U256::from(70u64));
         // Independently encoded with Cast against the entry point shared by
         // FlashLoanArb and FlashLoanArbGuarded.
@@ -269,9 +388,9 @@ mod tests {
             "00000000000000000000000000000000000000000000000000000000000003e8",
             "0000000000000000000000000000000000000000000000000000000000000080",
             "0000000000000000000000000000000000000000000000000000000000000046",
-            "000000000000000000000000000000000000000000000000000000000000002a",
-            "0000000000000000000000000000000000000010010000000000000000000000",
-            "0000000000000000200100000000000000000000000000000000000000000000",
+            "000000000000000000000000000000000000000000000000000000000000002c",
+            "0000000000000000000000000000000000000000100100000000000000000000",
+            "0000000000000000000020010000000000000000000000000000000000000000",
         ))
         .unwrap();
         assert_eq!(plan.calldata, expected);
@@ -310,7 +429,7 @@ mod tests {
     }
 
     #[test]
-    fn refuses_v3_or_missing_pair_in_executable_path() {
+    fn refuses_missing_pair_in_executable_path() {
         let (cache, mut cycle, limits, gas) = fixture();
         cycle.hops[0].pair = address!("0000000000000000000000000000000000000030");
         assert!(prepare_v2_flash_loan(&cache, &cycle, &limits, Some(&gas)).is_err());
