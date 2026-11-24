@@ -9,7 +9,8 @@ use sandooo::arbitrage::{
     net::{largest_eligible_weth_v2_gap_bps, NetScan},
     preflight::supports_legacy_v2_pool,
     rpc::{
-        discover_weth_v2, load_allowlisted_reserves, load_token_decimals, verify_allowlisted_tokens,
+        discover_weth_v2, discover_weth_v3, load_allowlisted_reserves, load_token_decimals,
+        verify_allowlisted_tokens,
     },
     state::sync_topic,
     topology::count_closed_routes,
@@ -300,64 +301,83 @@ where
                         Duration::from_secs(5),
                         || async {
                             let pairs = discover_weth_v2(&provider, b, min_weth).await?;
-                            let (expanded, added) =
+                            let v3_floor = std::env::var("ARB_V3_MIN_LIQUIDITY")
+                                .ok()
+                                .and_then(|v| v.parse::<u128>().ok())
+                                .map(alloy::primitives::U256::from)
+                                .unwrap_or(alloy::primitives::U256::from(
+                                    1_000_000_000_000_000u128,
+                                ));
+                            let v3_pools = discover_weth_v3(&provider, b, v3_floor).await?;
+                            let (expanded, mut added) =
                                 expand_v2_allowlist(&allowlist, &configured_pairs, &pairs);
+                            let (expanded, v3_added) =
+                                expand_v3_allowlist(&expanded, &added, &v3_pools);
+                            added.extend(v3_added);
                             let snapshot =
                                 load_allowlisted_reserves(&provider, &expanded, b).await?;
                             let new_tokens: Vec<_> = pairs
                                 .iter()
                                 .filter(|(pair, _, _)| added.contains(pair))
                                 .flat_map(|(_, token0, token1)| [*token0, *token1])
+                                .chain(
+                                    v3_pools
+                                        .iter()
+                                        .filter(|(pool, _, _, _)| added.contains(pool))
+                                        .flat_map(|(_, token0, token1, _)| [*token0, *token1]),
+                                )
                                 .filter(|token| !decimals_map.contains_key(token))
                                 .collect();
                             let decimals = load_token_decimals(&provider, new_tokens).await;
-                            Ok((pairs, expanded, added, snapshot, decimals))
+                            Ok((pairs, v3_pools, expanded, added, snapshot, decimals))
                         },
                     )
                     .await;
                     let mut added_pairs = Vec::new();
-                    let (refreshed, net_snapshot_available) =
-                        if let Some((gas_units, (pairs, expanded, added, snapshot, decimals))) =
-                            discovery
-                        {
-                            info!(
-                                verified_v2_pairs = pairs.len(),
-                                pools = snapshot.len(),
-                                "canonical Ethereum WETH V2 discovery ready"
-                            );
-                            expanded_allowlist = expanded;
-                            decimals_map.extend(decimals);
-                            added_pairs = added;
-                            let slippage_bps = std::env::var("SIM_SLIPPAGE_BPS")
-                                .ok()
-                                .and_then(|v| v.parse::<u64>().ok())
-                                .unwrap_or(5);
-                            net_scan = Some(NetScan {
-                                gas_units,
-                                tip_wei: 2_000_000_000,
-                                slippage_bps,
-                                min_weth,
-                                pairs: pairs
-                                    .iter()
-                                    .map(|(pair, _, _)| *pair)
-                                    .chain(configured_pairs.iter().copied())
-                                    .collect(),
-                            });
-                            (Ok(snapshot), true)
-                        } else if expanded_allowlist == allowlist {
-                            (
-                                load_allowlisted_reserves(&provider, &allowlist, b).await,
-                                true,
-                            )
-                        } else {
-                            refresh_with_configured_fallback(
-                                b,
-                                Duration::from_secs(5),
-                                load_allowlisted_reserves(&provider, &expanded_allowlist, b),
-                                || load_allowlisted_reserves(&provider, &allowlist, b),
-                            )
-                            .await
-                        };
+                    let (refreshed, net_snapshot_available) = if let Some((
+                        gas_units,
+                        (pairs, v3_pools, expanded, added, snapshot, decimals),
+                    )) = discovery
+                    {
+                        info!(
+                            verified_v2_pairs = pairs.len(),
+                            verified_v3_pools = v3_pools.len(),
+                            pools = snapshot.len(),
+                            "canonical Ethereum WETH V2 discovery ready"
+                        );
+                        expanded_allowlist = expanded;
+                        decimals_map.extend(decimals);
+                        added_pairs = added;
+                        let slippage_bps = std::env::var("SIM_SLIPPAGE_BPS")
+                            .ok()
+                            .and_then(|v| v.parse::<u64>().ok())
+                            .unwrap_or(5);
+                        net_scan = Some(NetScan {
+                            gas_units,
+                            tip_wei: 2_000_000_000,
+                            slippage_bps,
+                            min_weth,
+                            pairs: pairs
+                                .iter()
+                                .map(|(pair, _, _)| *pair)
+                                .chain(configured_pairs.iter().copied())
+                                .collect(),
+                        });
+                        (Ok(snapshot), true)
+                    } else if expanded_allowlist == allowlist {
+                        (
+                            load_allowlisted_reserves(&provider, &allowlist, b).await,
+                            true,
+                        )
+                    } else {
+                        refresh_with_configured_fallback(
+                            b,
+                            Duration::from_secs(5),
+                            load_allowlisted_reserves(&provider, &expanded_allowlist, b),
+                            || load_allowlisted_reserves(&provider, &allowlist, b),
+                        )
+                        .await
+                    };
                     match refreshed {
                         Ok(fresh) => {
                             if let Some(net_scan) =
@@ -547,7 +567,10 @@ where
             let v2_compatible_gross_candidates = deduped
                 .iter()
                 .filter(|candidate| {
-                    candidate.hops.iter().all(|hop| { guard.get(&hop.pair).is_some_and(supports_legacy_v2_pool) || guard.get_v3(&hop.pair).is_some() })
+                    candidate.hops.iter().all(|hop| {
+                        guard.get(&hop.pair).is_some_and(supports_legacy_v2_pool)
+                            || guard.get_v3(&hop.pair).is_some()
+                    })
                 })
                 .count();
 
@@ -686,7 +709,10 @@ where
             let margin_before_gas = cycle.gross_profit.saturating_sub(premium);
             let contract_compatible = {
                 let guard = cache.read().await;
-                cycle.hops.iter().all(|hop| { guard.get(&hop.pair).is_some_and(supports_legacy_v2_pool) || guard.get_v3(&hop.pair).is_some() })
+                cycle.hops.iter().all(|hop| {
+                    guard.get(&hop.pair).is_some_and(supports_legacy_v2_pool)
+                        || guard.get_v3(&hop.pair).is_some()
+                })
             };
             info!(
                 gross_profit_raw = %cycle.gross_profit,
@@ -799,6 +825,22 @@ fn expand_v2_allowlist(
     (expanded, added)
 }
 
+fn expand_v3_allowlist(
+    allowlist: &str,
+    seen: &[Address],
+    pools: &[(Address, Address, Address, u64)],
+) -> (String, Vec<Address>) {
+    let mut expanded = allowlist.to_owned();
+    let mut seen: HashSet<Address> = seen.iter().copied().collect();
+    let mut added = Vec::new();
+    for &(pool, token0, token1, fee) in pools {
+        if seen.insert(pool) {
+            expanded.push_str(&format!(";v3:{pool}:{token0}:{token1}:{}", fee / 100));
+            added.push(pool);
+        }
+    }
+    (expanded, added)
+}
 fn subscribe_v2_sync<P>(
     sync_provider: P,
     sync_pairs: Vec<Address>,
@@ -898,7 +940,7 @@ mod scanner_tests {
         let token0 = super::Address::repeat_byte(3);
         let token1 = super::Address::repeat_byte(4);
         let configured = format!("{existing}:{token0}:{token1}");
-        let (expanded, added) = super::expand_v2_allowlist(
+        let (expanded, mut added) = super::expand_v2_allowlist(
             &configured,
             &[existing].into_iter().collect(),
             &[
