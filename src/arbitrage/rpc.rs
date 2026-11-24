@@ -1,7 +1,7 @@
 use super::state::{PoolState, ReserveCache, V3PoolState};
 use alloy::{
     network::Ethereum,
-    primitives::{Address, U256},
+    primitives::{address, Address, U256},
     providers::Provider,
     sol,
 };
@@ -19,6 +19,7 @@ sol! {
 
     #[sol(rpc)]
     interface V3Pool {
+        function factory() external view returns (address);
         function token0() external view returns (address);
         function token1() external view returns (address);
         function slot0() external view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint8 feeProtocol, bool unlocked);
@@ -28,11 +29,41 @@ sol! {
     }
 
     #[sol(rpc)]
+    interface CanonicalV3Factory {
+        function getPool(address tokenA, address tokenB, uint24 fee) external view returns (address pool);
+    }
+
+    #[sol(rpc)]
     interface IERC20Meta {
         function decimals() external view returns (uint8);
     }
 }
 
+/// A bounded set of widely traded Ethereum-mainnet token contracts used by both
+/// discovery paths. Every candidate pool must still be proven on chain.
+const DISCOVERY_MARKETS: [Address; 21] = [
+    address!("A0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"), // USDC
+    address!("dAC17F958D2ee523a2206206994597C13D831ec7"), // USDT
+    address!("6B175474E89094C44Da98b954EedeAC495271d0F"), // DAI
+    address!("2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599"), // WBTC
+    address!("514910771AF9Ca656af840dff83E8264EcF986CA"), // LINK
+    address!("1f9840a85d5aF5bf1D1762F925BDADdC4201F984"), // UNI
+    address!("6982508145454Ce325dDbE47a25d4ec3d2311933"), // PEPE
+    address!("7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9"), // AAVE
+    address!("D533a949740bb3306d119CC777fa900bA034cd52"), // CRV
+    address!("c00e94Cb662C3520282E6f5717214004A7f26888"), // COMP
+    address!("0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e"), // YFI
+    address!("808507121B80c02388fAd14726482e061B8da827"), // PENDLE
+    address!("5A98FcBEA516Cf06857215779Fd812CA3beF1B32"), // LDO
+    address!("6B3595068778DD592e39A122f4f5a5cF09C90fE2"), // SUSHI
+    address!("C18360217D8F7Ab5e7c516566761Ea12Ce7F9D72"), // ENS
+    address!("0F5D2fB29fb7d3CFeE444a200298f468908cC942"), // MANA
+    address!("c944E90C64B2c07662A292be6244BDf05Cda44a7"), // GRT
+    address!("04Fa0d235C4abf4BcF4787aF4CF447DE572eF828"), // UMA
+    address!("BB0E17EF65F82Ab018d8EDd776e8DD940327B28b"), // AXS
+    address!("7D1AfA7B718fb893dB30A3aBc0Cfc608AaCfeBB0"), // MATIC
+    address!("408e41876cCCDC0a322b998ad8485960982c4cD1"), // REN
+];
 /// Loads only explicitly configured pools. Format:
 /// `pair:token0:token1` or `pair:token0:token1:fee_bps`
 /// Reserves are fetched concurrently with ordinary eth_call, not debug tracing.
@@ -275,7 +306,6 @@ pub async fn discover_weth_v2<P: Provider<Ethereum> + Clone>(
     min_weth: U256,
 ) -> Result<Vec<(Address, Address, Address)>> {
     use crate::common::constants::{FACTORY_V2, WETH};
-    use alloy::primitives::address;
 
     anyhow::ensure!(
         provider.get_chain_id().await? == 1,
@@ -289,29 +319,7 @@ pub async fn discover_weth_v2<P: Provider<Ethereum> + Clone>(
     // All candidate PAIRS must still be proven by factory.getPair(),
     // pair.factory(), token ordering, reserves and minimum WETH liquidity.
     // No token or discovered pair is automatically approved for execution.
-    let markets = [
-        address!("A0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"), // USDC
-        address!("dAC17F958D2ee523a2206206994597C13D831ec7"), // USDT (legacy executor incompatible)
-        address!("6B175474E89094C44Da98b954EedeAC495271d0F"), // DAI
-        address!("2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599"), // WBTC
-        address!("514910771AF9Ca656af840dff83E8264EcF986CA"), // LINK
-        address!("1f9840a85d5aF5bf1D1762F925BDADdC4201F984"), // UNI
-        address!("6982508145454Ce325dDbE47a25d4ec3d2311933"), // PEPE
-        address!("7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9"), // AAVE
-        address!("D533a949740bb3306d119CC777fa900bA034cd52"), // CRV
-        address!("c00e94Cb662C3520282E6f5717214004A7f26888"), // COMP
-        address!("0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e"), // YFI
-        address!("808507121B80c02388fAd14726482e061B8da827"), // PENDLE
-        address!("5A98FcBEA516Cf06857215779Fd812CA3beF1B32"), // LDO
-        address!("6B3595068778DD592e39A122f4f5a5cF09C90fE2"), // SUSHI
-        address!("C18360217D8F7Ab5e7c516566761Ea12Ce7F9D72"), // ENS
-        address!("0F5D2fB29fb7d3CFeE444a200298f468908cC942"), // MANA
-        address!("c944E90C64B2c07662A292be6244BDf05Cda44a7"), // GRT
-        address!("04Fa0d235C4abf4BcF4787aF4CF447DE572eF828"), // UMA
-        address!("BB0E17EF65F82Ab018d8EDd776e8DD940327B28b"), // AXS
-        address!("7D1AfA7B718fb893dB30A3aBc0Cfc608AaCfeBB0"), // MATIC
-        address!("408e41876cCCDC0a322b998ad8485960982c4cD1"), // REN
-    ];
+    let markets = DISCOVERY_MARKETS;
     let mut pools = Vec::new();
     for factory in factories {
         let registry = CanonicalV2Factory::new(factory, provider.clone());
@@ -344,6 +352,58 @@ pub async fn discover_weth_v2<P: Provider<Ethereum> + Clone>(
                 && U256::from(weth_reserve) >= min_weth
             {
                 pools.push((pair, token0, token1));
+            }
+        }
+    }
+    Ok(pools)
+}
+/// Discover WETH/token V3 pools across the three canonical fee tiers.
+/// min_liquidity is L in raw units; the 0.5% hop cap means a workable floor is
+/// roughly the intended max trade divided by 0.005.
+pub async fn discover_weth_v3<P: Provider<Ethereum> + Clone>(
+    provider: &P,
+    block: u64,
+    min_liquidity: U256,
+) -> Result<Vec<(Address, Address, Address, u64)>> {
+    use crate::common::constants::WETH;
+    use alloy::primitives::Uint;
+
+    anyhow::ensure!(
+        provider.get_chain_id().await? == 1,
+        "V3 discovery requires Ethereum mainnet"
+    );
+    let factory = address!("1F98431c8aD98523631AE4a59f267346ea31F984");
+    let registry = CanonicalV3Factory::new(factory, provider.clone());
+    let mut pools = Vec::new();
+    for token in DISCOVERY_MARKETS {
+        for fee in [500u64, 3_000, 10_000] {
+            let pool = registry
+                .getPool(WETH, token, Uint::<24, 1>::from(fee))
+                .block(block.into())
+                .call()
+                .await?;
+            if pool.is_zero() {
+                continue;
+            }
+            let contract = V3Pool::new(pool, provider.clone());
+            let token0 = contract.token0().block(block.into()).call().await?;
+            let token1 = contract.token1().block(block.into()).call().await?;
+            let actual_factory = contract.factory().block(block.into()).call().await?;
+            let spacing = contract.tickSpacing().block(block.into()).call().await?;
+            let expected_spacing: i128 = match fee {
+                500 => 10,
+                3_000 => 60,
+                _ => 200,
+            };
+            anyhow::ensure!(
+                actual_factory == factory
+                    && ((token0 == WETH && token1 == token) || (token1 == WETH && token0 == token))
+                    && i128::try_from(spacing).unwrap_or(i128::MAX) == expected_spacing,
+                "factory, token or spacing mismatch for discovered V3 pool {pool}"
+            );
+            let liquidity = contract.liquidity().block(block.into()).call().await?;
+            if U256::from(liquidity) >= min_liquidity {
+                pools.push((pool, token0, token1, fee));
             }
         }
     }
