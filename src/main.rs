@@ -547,10 +547,7 @@ where
             let v2_compatible_gross_candidates = deduped
                 .iter()
                 .filter(|candidate| {
-                    candidate
-                        .hops
-                        .iter()
-                        .all(|hop| guard.get(&hop.pair).is_some_and(supports_legacy_v2_pool))
+                    candidate.hops.iter().all(|hop| { guard.get(&hop.pair).is_some_and(supports_legacy_v2_pool) || guard.get_v3(&hop.pair).is_some() })
                 })
                 .count();
 
@@ -687,18 +684,15 @@ where
             let premium = cycle.amount_in * alloy::primitives::U256::from(premium_bps)
                 / alloy::primitives::U256::from(10_000u64);
             let margin_before_gas = cycle.gross_profit.saturating_sub(premium);
-            let v2_contract_compatible = {
+            let contract_compatible = {
                 let guard = cache.read().await;
-                cycle
-                    .hops
-                    .iter()
-                    .all(|hop| guard.get(&hop.pair).is_some_and(supports_legacy_v2_pool))
+                cycle.hops.iter().all(|hop| { guard.get(&hop.pair).is_some_and(supports_legacy_v2_pool) || guard.get_v3(&hop.pair).is_some() })
             };
             info!(
                 gross_profit_raw = %cycle.gross_profit,
                 margin_after_premium_before_gas_raw = %margin_before_gas,
                 net_profit_verified = false,
-                v2_contract_compatible,
+                contract_compatible,
                 configured_gas_cost_wei_unverified = gas_cost_raw,
                 amount_in = %cycle.amount_in,
                 amount_out = %cycle.amount_out,
