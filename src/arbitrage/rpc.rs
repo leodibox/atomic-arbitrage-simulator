@@ -5,7 +5,7 @@ use alloy::{
     providers::Provider,
     sol,
 };
-use anyhow::{Context, Result};
+use anyhow::{ensure, Context, Result};
 use std::collections::{HashMap, HashSet};
 
 sol! {
@@ -24,6 +24,7 @@ sol! {
         function slot0() external view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint8 feeProtocol, bool unlocked);
         function liquidity() external view returns (uint128);
         function fee() external view returns (uint24);
+    function tickSpacing() external view returns (int24);
     }
 
     #[sol(rpc)]
@@ -138,18 +139,33 @@ where
                 let slot0 = contract.slot0().block(block.into()).call().await?;
                 let liq = contract.liquidity().block(block.into()).call().await?;
                 let fee = contract.fee().block(block.into()).call().await?;
-                Ok::<_, anyhow::Error>((pair, token0, token1, fee_bps, slot0, liq, fee))
+                let spacing = contract.tickSpacing().block(block.into()).call().await?;
+                let spacing = contract.tickSpacing().block(block.into()).call().await?;
+                Ok::<_, anyhow::Error>((pair, token0, token1, fee_bps, slot0, liq, fee, spacing))
             }));
         }
 
         for handle in handles {
-            let (pair, token0, token1, fee_bps, slot0, liq, fee) = handle.await??;
+            let (pair, token0, token1, fee_bps, slot0, liq, fee, spacing) = handle.await??;
             let sqrt_price = U256::from(slot0.sqrtPriceX96);
             let liquidity = U256::from(liq);
             let tick: i128 = i128::try_from(slot0.tick).unwrap_or(0);
             // Use on-chain fee if available, else config
-            let actual_fee_bps = if fee > alloy::primitives::Uint::<24, 1>::ZERO {
-                fee.to::<u64>() / 100
+            let on_chain_fee = fee.to::<u64>();
+            let actual_fee_bps = if on_chain_fee > 0 {
+                let expected_spacing: i128 = match on_chain_fee {
+                    500 => 10,
+                    3000 => 60,
+                    10000 => 200,
+                    other => anyhow::bail!(
+                        "unsupported V3 fee {other} on {pair}; the guarded executor handles 500/3000/10000"
+                    ),
+                };
+                ensure!(
+                    i128::try_from(spacing).unwrap_or(i128::MAX) == expected_spacing,
+                    "V3 pool {pair} fee/spacing mismatch: fee {on_chain_fee}, spacing {spacing:?}"
+                );
+                on_chain_fee / 100
             } else {
                 fee_bps
             };
