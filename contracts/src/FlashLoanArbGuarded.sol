@@ -303,7 +303,7 @@ contract FlashLoanArbGuarded {
             zeroForOne,
             int256(inputAmount),
             limit,
-            abi.encode(currentToken, outputToken)
+            abi.encode(token0, token1)
         );
         v3PoolInFlight = address(0);
 
@@ -319,11 +319,11 @@ contract FlashLoanArbGuarded {
     ) external {
         address expected = v3PoolInFlight;
         if (expected == address(0) || msg.sender != expected) revert NotPool();
-        (address tokenIn, address tokenOut) = abi.decode(data, (address, address));
+        (address token0, address token1) = abi.decode(data, (address, address));
         if (amount0Delta > 0) {
-            _safeTransfer(tokenIn, msg.sender, uint256(amount0Delta));
+            _safeTransfer(token0, msg.sender, uint256(amount0Delta));
         } else if (amount1Delta > 0) {
-            _safeTransfer(tokenOut, msg.sender, uint256(amount1Delta));
+            _safeTransfer(token1, msg.sender, uint256(amount1Delta));
         } else {
             revert BadPath();
         }

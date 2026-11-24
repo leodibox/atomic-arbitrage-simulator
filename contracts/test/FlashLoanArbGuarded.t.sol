@@ -22,6 +22,56 @@ contract RepaymentObservingPool {
     }
 }
 
+
+/// Fixed-rate V3 stand-in. Charges the input through the real callback path so
+/// the in-flight pool lock is exercised, not bypassed.
+contract MockV3Pool {
+    address public token0;
+    address public token1;
+    uint24 public fee;
+    int24 public tickSpacing;
+    uint256 public rateNum = 497_500_000;
+    uint256 public rateDen = 1;
+
+    constructor(address a, address b, uint24 f, int24 s) {
+        token0 = a;
+        token1 = b;
+        fee = f;
+        tickSpacing = s;
+    }
+
+    function swap(
+        address recipient,
+        bool zeroForOne,
+        int256 amountSpecified,
+        uint160,
+        bytes calldata data
+    ) external returns (int256 amount0, int256 amount1) {
+        require(amountSpecified > 0, "exact-in only");
+        uint256 amountIn = uint256(amountSpecified);
+        uint256 amountOut = amountIn * rateNum / rateDen;
+        address tokenIn = zeroForOne ? token0 : token1;
+        address tokenOut = zeroForOne ? token1 : token0;
+
+        uint256 beforeIn = MockERC20(tokenIn).balanceOf(address(this));
+        MockERC20(tokenOut).transfer(recipient, amountOut);
+
+        if (zeroForOne) {
+            FlashLoanArbGuarded(recipient).uniswapV3SwapCallback(
+                int256(amountIn), -int256(amountOut), data
+            );
+            amount0 = int256(amountIn);
+            amount1 = -int256(amountOut);
+        } else {
+            FlashLoanArbGuarded(recipient).uniswapV3SwapCallback(
+                -int256(amountOut), int256(amountIn), data
+            );
+            amount0 = -int256(amountOut);
+            amount1 = int256(amountIn);
+        }
+        require(MockERC20(tokenIn).balanceOf(address(this)) >= beforeIn + amountIn, "not paid");
+    }
+}
 /// These are mock-only regression tests. They do NOT replace a mainnet fork,
 /// third-party audit, or gas/account signer verification.
 contract FlashLoanArbGuardedTest is Test {
@@ -51,7 +101,7 @@ contract FlashLoanArbGuardedTest is Test {
     }
 
     function pathGood() internal view returns (bytes memory) {
-        return abi.encodePacked(address(cheap), uint8(1), address(expensive), uint8(0));
+        return abi.encodePacked(uint8(0), address(cheap), uint8(1), uint8(0), address(expensive), uint8(0));
     }
 
     function test_profitableApprovedV2PathAndSweep() public {
@@ -119,19 +169,19 @@ contract FlashLoanArbGuardedTest is Test {
     }
 
     function test_rejectWrongDirection() public {
-        bytes memory wrong = abi.encodePacked(address(cheap), uint8(0), address(expensive), uint8(1));
+        bytes memory wrong = abi.encodePacked(uint8(0), address(cheap), uint8(0), uint8(0), address(expensive), uint8(1));
         vm.expectRevert(FlashLoanArbGuarded.BadPath.selector);
         arb.executeArbitrage(address(usdc), 10_000e6, wrong, 1);
     }
 
     function test_rejectInvalidDirectionByte() public {
-        bytes memory wrong = abi.encodePacked(address(cheap), uint8(2), address(expensive), uint8(0));
+        bytes memory wrong = abi.encodePacked(uint8(0), address(cheap), uint8(2), uint8(0), address(expensive), uint8(0));
         vm.expectRevert(FlashLoanArbGuarded.BadPath.selector);
         arb.executeArbitrage(address(usdc), 10_000e6, wrong, 1);
     }
 
     function test_rejectDuplicatePair() public {
-        bytes memory wrong = abi.encodePacked(address(cheap), uint8(1), address(cheap), uint8(0));
+        bytes memory wrong = abi.encodePacked(uint8(0), address(cheap), uint8(1), uint8(0), address(cheap), uint8(0));
         vm.expectRevert(FlashLoanArbGuarded.BadPath.selector);
         arb.executeArbitrage(address(usdc), 10_000e6, wrong, 1);
     }
@@ -294,6 +344,50 @@ contract FlashLoanArbGuardedTest is Test {
         assertEq(usdc.allowance(address(arb), address(aave)), 0);
     }
 
+
+    function _v3Path(MockV3Pool v3) internal view returns (bytes memory) {
+        return abi.encodePacked(uint8(1), address(v3), uint8(1), uint8(0), address(expensive), uint8(0));
+    }
+
+    function test_v3HopPaysThroughCallbackAndProfits() public {
+        MockV3Pool v3 = new MockV3Pool(address(usdc), address(weth), 500, 10);
+        weth.mint(address(v3), 10 ether);
+        arb.setApprovedV3Pool(address(v3), true);
+        uint256 beforeAmount = usdc.balanceOf(address(arb));
+        arb.executeArbitrage(address(usdc), 10_000e6, _v3Path(v3), 1);
+        assertGt(usdc.balanceOf(address(arb)), beforeAmount, "v3 hop must not lose funds");
+        assertEq(usdc.balanceOf(address(v3)), 10_000e6, "callback must pay the input");
+        assertEq(weth.balanceOf(address(v3)), 10 ether - 4_975_000_000_000_000_000, "output delivered");
+    }
+
+    function test_v3UnapprovedPoolRejected() public {
+        MockV3Pool v3 = new MockV3Pool(address(usdc), address(weth), 500, 10);
+        weth.mint(address(v3), 10 ether);
+        vm.expectRevert(FlashLoanArbGuarded.UnapprovedPair.selector);
+        arb.executeArbitrage(address(usdc), 10_000e6, _v3Path(v3), 1);
+    }
+
+    function test_v3WrongTickSpacingRejected() public {
+        MockV3Pool v3 = new MockV3Pool(address(usdc), address(weth), 500, 60);
+        weth.mint(address(v3), 10 ether);
+        arb.setApprovedV3Pool(address(v3), true);
+        vm.expectRevert(FlashLoanArbGuarded.BadPath.selector);
+        arb.executeArbitrage(address(usdc), 10_000e6, _v3Path(v3), 1);
+    }
+
+    function test_v3CallbackRejectsForeignCaller() public {
+        vm.prank(address(0xBAD));
+        vm.expectRevert(FlashLoanArbGuarded.NotPool.selector);
+        arb.uniswapV3SwapCallback(1, -1, abi.encode(address(usdc), address(weth)));
+    }
+
+    function test_v3UnknownFeeLevelRejected() public {
+        MockV3Pool v3 = new MockV3Pool(address(usdc), address(weth), 100, 1);
+        weth.mint(address(v3), 10 ether);
+        arb.setApprovedV3Pool(address(v3), true);
+        vm.expectRevert(FlashLoanArbGuarded.BadPath.selector);
+        arb.executeArbitrage(address(usdc), 10_000e6, _v3Path(v3), 1);
+    }
     function assertRolledBack() internal view {
         assertEq(usdc.balanceOf(RECIPIENT), 0);
         assertEq(usdc.balanceOf(address(aave)), 0);
