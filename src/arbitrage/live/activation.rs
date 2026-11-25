@@ -21,6 +21,7 @@ sol! {
         function autoPayout() external view returns (bool);
         function maxLoanRaw(address asset) external view returns (uint256);
         function approvedPair(address pair) external view returns (bool);
+function approvedV3Pool(address pool) external view returns (bool);
         function approvedOperator(address operator) external view returns (bool);
     }
 }
@@ -33,6 +34,8 @@ pub struct ActivationRequest {
     pub amount: U256,
     /// Ordered hop pairs, already validated as a 2-3 hop route.
     pub pairs: Vec<Address>,
+    /// Subset of `pairs` that are V3 pools; checked against approvedV3Pool.
+    pub v3_pools: Vec<Address>,
     pub expected_owner: Address,
     pub expected_recipient: Address,
     pub expected_pool: Address,
@@ -136,10 +139,12 @@ pub async fn verify_permission<P: Provider<Ethereum> + Clone>(
     );
 
     for pair in &request.pairs {
-        ensure!(
-            contract.approvedPair(*pair).call().await?,
-            "pair {pair} is not approved"
-        );
+        let approved = if request.v3_pools.contains(pair) {
+            contract.approvedV3Pool(*pair).call().await?
+        } else {
+            contract.approvedPair(*pair).call().await?
+        };
+        ensure!(approved, "hop {pair} is not approved for execution");
     }
 
     Ok(ActivationReport {

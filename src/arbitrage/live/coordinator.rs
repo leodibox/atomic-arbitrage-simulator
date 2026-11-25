@@ -218,6 +218,12 @@ pub async fn attempt<P: Provider<Ethereum> + Clone>(
         asset: prepared.asset,
         amount: prepared.amount,
         pairs: cycle.hops.iter().map(|hop| hop.pair).collect(),
+        v3_pools: cycle
+            .hops
+            .iter()
+            .filter(|hop| cache.get_v3(&hop.pair).is_some())
+            .map(|hop| hop.pair)
+            .collect(),
         expected_owner: config.owner,
         expected_recipient: config.recipient,
         expected_pool: AAVE_V3_POOL,
