@@ -64,7 +64,6 @@ pub fn supports_legacy_v2_pool(pool: &PoolState) -> bool {
     pool.fee_bps == 30 && pool.token0 != USDT && pool.token1 != USDT
 }
 
-
 /// Max share of a V3 pool's liquidity a single hop may consume, in bps.
 /// The quote engine is single-tick, so above this the price stops being
 /// trustworthy; the cap is a constant, not an env var, so it cannot drift.
@@ -117,7 +116,7 @@ pub fn prepare_v2_flash_loan(
     let mut seen_pools = HashSet::new();
     let mut current_token = cycle.start;
     let mut current_amount = cycle.amount_in;
-        for hop in &cycle.hops {
+    for hop in &cycle.hops {
         ensure!(seen_pools.insert(hop.pair), "duplicate pool in route");
         ensure!(hop.pair != Address::ZERO, "zero pool address");
 
@@ -261,7 +260,6 @@ mod tests {
         assert!(!supports_legacy_v2_pool(&pool));
     }
 
-
     /// V3-only cycle: 1 USDC -> 3 WETH, then 1 WETH -> 0.5 USDC.
     fn v3_fixture() -> (ReserveCache, Cycle, ExecutionLimits, GasQuote) {
         let usdc = address!("0000000000000000000000000000000000000001");
@@ -322,10 +320,7 @@ mod tests {
     #[test]
     fn refuses_v3_hop_above_trusted_liquidity_share() {
         let (mut cache, cycle, limits, gas) = v3_fixture();
-        cache
-            .get_v3_mut(&cycle.hops[0].pair)
-            .unwrap()
-            .liquidity = U256::from(10u64);
+        cache.get_v3_mut(&cycle.hops[0].pair).unwrap().liquidity = U256::from(10u64);
         let err = prepare_v2_flash_loan(&cache, &cycle, &limits, Some(&gas)).unwrap_err();
         assert!(err.to_string().contains("trusted share"), "got {err}");
     }
